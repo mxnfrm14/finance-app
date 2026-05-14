@@ -1,0 +1,247 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── NextAuth ────────────────────────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  passwordHash  String?
+  language      String    @default("fr")
+  role          String    @default("member") // "admin" | "member"
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts       Account[]
+  sessions       Session[]
+  positions      Position[]
+  brokers        Broker[]
+  assuranceVies  AssuranceVie[]
+  agentSessions  AgentSession[]
+  watchlistItems WatchlistItem[]
+  priceAlerts    PriceAlert[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expires      DateTime
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ─── Portfolio ───────────────────────────────────────────────────────────────
+
+model Broker {
+  id        String     @id @default(cuid())
+  name      String
+  slug      String
+  userId    String
+  user      User       @relation(fields: [userId], references: [id])
+  positions Position[]
+  createdAt DateTime   @default(now())
+
+  @@unique([userId, slug])
+  @@index([userId])
+}
+
+model Position {
+  id          String   @id @default(cuid())
+  isin        String
+  ticker      String?
+  name        String
+  assetType   String // "ACTION" | "ETF" | "OBLIGATION" | "TURBO" | "CRYPTO" | "AUTRE"
+  // Recalculé automatiquement via computeNewPru() à chaque transaction
+  quantity    Float    @default(0)
+  pru         Float    @default(0)
+  entryDate   DateTime
+  currency    String   @default("EUR")
+  accountType String // "PEA" | "CTO" | "AV" | "PEA-PME"
+  brokerId    String
+  broker      Broker   @relation(fields: [brokerId], references: [id])
+  // Produits à levier uniquement
+  barrierLevel Float?
+  strikePrice  Float?
+  expiryDate   DateTime?
+  leverage     Float?
+  // Métadonnées
+  sector    String?
+  geography String?
+  isActive  Boolean  @default(true)
+  notes     String?
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+
+  transactions Transaction[]
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  @@unique([userId, isin, accountType, brokerId])
+  @@index([isin])
+  @@index([userId])
+  @@index([brokerId])
+}
+
+model Transaction {
+  id         String   @id @default(cuid())
+  positionId String
+  position   Position @relation(fields: [positionId], references: [id], onDelete: Cascade)
+  type       String // "BUY" | "SELL" | "DIVIDEND" | "SPLIT" | "TRANSFER"
+  quantity   Float
+  price      Float
+  fees       Float    @default(0)
+  currency   String   @default("EUR")
+  date       DateTime
+  notes      String?
+  createdAt  DateTime @default(now())
+
+  @@index([positionId])
+  @@index([date])
+}
+
+// ─── Cache prix ───────────────────────────────────────────────────────────────
+
+model PriceCache {
+  isin        String   @id
+  ticker      String?
+  lastPrice   Float
+  currency    String   @default("EUR")
+  change1d    Float?
+  change1dAbs Float?
+  source      String   @default("yahoo")
+  fetchedAt   DateTime @updatedAt
+
+  @@index([fetchedAt])
+}
+
+// ─── Assurance Vie ────────────────────────────────────────────────────────────
+
+model AssuranceVie {
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contractNumber String?
+  provider       String
+  contractName   String
+  contractType   String   @default("MIXTE") // "FONDS_EUROS" | "UC" | "MIXTE"
+  openDate       DateTime
+  initialDeposit Float    @default(0)
+  currentValue   Float    @default(0)
+  beneficiaries  String?
+  notes          String?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  payments AssuranceViePayment[]
+
+  @@index([userId])
+}
+
+model AssuranceViePayment {
+  id             String       @id @default(cuid())
+  assuranceVieId String
+  assuranceVie   AssuranceVie @relation(fields: [assuranceVieId], references: [id], onDelete: Cascade)
+  type           String // "VERSEMENT" | "RETRAIT" | "ARBITRAGE"
+  amount         Float
+  date           DateTime
+  notes          String?
+  createdAt      DateTime     @default(now())
+
+  @@index([assuranceVieId])
+}
+
+// ─── Watchlist & Alertes ──────────────────────────────────────────────────────
+
+model WatchlistItem {
+  id         String   @id @default(cuid())
+  isin       String
+  name       String
+  ticker     String?
+  addedAt    DateTime @default(now())
+  addedPrice Float?
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, isin])
+  @@index([userId])
+}
+
+model PriceAlert {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isin        String
+  ticker      String?
+  name        String
+  targetPrice Float
+  direction   String // "above" | "below"
+  triggered   Boolean   @default(false)
+  triggeredAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([userId])
+  @@index([triggered])
+}
+
+// ─── Agent IA ─────────────────────────────────────────────────────────────────
+
+model AgentSession {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mode         String // "portfolio" | "instrument" | "market"
+  target       String? // ticker/ISIN pour mode instrument
+  messages     String // JSON : Array<{role, content}> — historique complet
+  riskScore    Int?
+  modelVersion String   @default("claude-opus-4-6")
+  createdAt    DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+// ─── Config app ───────────────────────────────────────────────────────────────
+
+model AppConfig {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
