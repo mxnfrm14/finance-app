@@ -35,7 +35,7 @@ export async function getChartPrices(
   }
 
   try {
-    let result = await yf.chart(ticker, chartOpts as any, { validateResult: false })
+    let result: any = await yf.chart(ticker, chartOpts as any, { validateResult: false })
 
     // If no data, try resolving symbol (CW8 -> CW8.PA, etc.)
     if ((!result || (Array.isArray(result.quotes) && result.quotes.length === 0))) {

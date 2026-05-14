@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
-import { TrendingUp, Search, Bot, BarChart3, Layers, Loader2, ArrowUpRight, ArrowDownRight, Minus } from "lucide-react"
+import { TrendingUp, Search, Bot, BarChart3, Layers, Loader2, ArrowUpRight, ArrowDownRight, Minus, BookmarkPlus, BookmarkCheck, BookmarkMinus } from "lucide-react"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -31,6 +32,13 @@ interface StaticInstrument {
   name: string
   category: "index" | "etf"
   description: string
+}
+
+interface WatchlistItem {
+  id: string
+  isin: string
+  ticker: string | null
+  name: string
 }
 
 // ─── Données statiques ────────────────────────────────────────────────────────
@@ -62,6 +70,130 @@ function fmtChange(pct: number | null) {
   return `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%`
 }
 
+function WatchlistIconButton({ ticker, name, watchlistItem, onAdded, onRemoved, onClick }: {
+  ticker: string
+  name: string
+  watchlistItem: WatchlistItem | null
+  onAdded?: (item: WatchlistItem) => void
+  onRemoved?: (id: string) => void
+  onClick?: (e: React.MouseEvent) => void
+}) {
+  const [loading, setLoading] = useState(false)
+  const [isHovered, setIsHovered] = useState(false)
+  const isInWatchlist = watchlistItem !== null
+
+  const addToWatchlist = async (e: React.MouseEvent) => {
+    onClick?.(e)
+    e.preventDefault()
+    setLoading(true)
+    try {
+      let resolvedIsin: string | null = null
+      try {
+        const r = await fetch(`/api/market/resolve-isin?ticker=${encodeURIComponent(ticker)}`)
+        if (r.ok) {
+          const j = await r.json()
+          resolvedIsin = j?.isin ?? null
+        }
+      } catch {
+        // ignore
+      }
+
+      let addedPrice: number | undefined
+      try {
+        const quoteRes = await fetch(`/api/market/quote?tickers=${encodeURIComponent(ticker)}`)
+        if (quoteRes.ok) {
+          const quotes = (await quoteRes.json()) as Record<string, { price?: number }>
+          addedPrice = quotes[ticker]?.price
+        }
+      } catch {
+        // If quote lookup fails, still add the item without entry price.
+      }
+
+      const isinToSend = resolvedIsin ?? ticker
+      const res = await fetch("/api/watchlist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isin: isinToSend, name, ticker, addedPrice }),
+      })
+
+      if (res.ok) {
+        toast.success("Ajoute a la watchlist")
+        const createdItem = (await res.json()) as WatchlistItem
+        onAdded?.(createdItem)
+      } else {
+        const json = await res.json()
+        toast.error(json?.error ?? "Erreur")
+      }
+    } catch (err) {
+      toast.error((err as Error).message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const removeFromWatchlist = async (e: React.MouseEvent) => {
+    if (!watchlistItem) return
+    onClick?.(e)
+    e.preventDefault()
+    setLoading(true)
+    try {
+      const res = await fetch(`/api/watchlist/${watchlistItem.id}`, { method: "DELETE" })
+      if (res.ok) {
+        toast.success("Retire de la watchlist")
+        onRemoved?.(watchlistItem.id)
+      } else {
+        const json = await res.json()
+        toast.error(json?.error ?? "Erreur")
+      }
+    } catch (err) {
+      toast.error((err as Error).message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleClick = (e: React.MouseEvent) => {
+    if (isInWatchlist) {
+      void removeFromWatchlist(e)
+      return
+    }
+    void addToWatchlist(e)
+  }
+
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      className="h-8 w-8 shrink-0 p-0"
+      onClick={handleClick}
+      disabled={loading}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      aria-label={
+        isInWatchlist
+          ? `${ticker} est dans la watchlist. Cliquez pour retirer.`
+          : `Ajouter ${ticker} a la watchlist`
+      }
+      title={
+        isInWatchlist
+          ? isHovered
+            ? "Retirer de la watchlist"
+            : "Dans la watchlist"
+          : "Ajouter a la watchlist"
+      }
+    >
+      {loading ? (
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+      ) : isInWatchlist ? (
+        isHovered ? <BookmarkMinus className="h-3.5 w-3.5" /> : <BookmarkCheck className="h-3.5 w-3.5" />
+      ) : (
+        <BookmarkPlus className="h-3.5 w-3.5" />
+      )}
+    </Button>
+  )
+}
+
 // ─── Badge variation ──────────────────────────────────────────────────────────
 
 function ChangeBadge({ change1d }: { change1d: number | null }) {
@@ -80,10 +212,13 @@ function ChangeBadge({ change1d }: { change1d: number | null }) {
 
 // ─── Carte instrument statique ────────────────────────────────────────────────
 
-function InstrumentCard({ instrument, quote, loading }: {
+function InstrumentCard({ instrument, quote, loading, watchlistItem, onAdded, onRemoved }: {
   instrument: StaticInstrument
   quote: QuoteData | null
   loading: boolean
+  watchlistItem: WatchlistItem | null
+  onAdded: (item: WatchlistItem) => void
+  onRemoved: (id: string) => void
 }) {
   const router = useRouter()
   const isEtf = instrument.category === "etf"
@@ -122,11 +257,20 @@ function InstrumentCard({ instrument, quote, loading }: {
           )}
         </div>
         <p className="text-xs text-muted-foreground">{instrument.description}</p>
-        <Button variant="outline" size="sm" className="w-full gap-1.5 mt-auto"
-          onClick={goToInstrument}>
-          <TrendingUp className="h-3.5 w-3.5" />
-          Voir le détail
-        </Button>
+        <div className="mt-auto flex min-w-0 items-center gap-2">
+          <Button variant="outline" size="sm" className="min-w-0 flex-1 gap-1.5"
+            onClick={goToInstrument}>
+            <TrendingUp className="h-3.5 w-3.5" />
+            Voir le détail
+          </Button>
+          <WatchlistIconButton
+            ticker={instrument.ticker}
+            name={instrument.name}
+            watchlistItem={watchlistItem}
+            onAdded={onAdded}
+            onRemoved={onRemoved}
+          />
+        </div>
       </CardContent>
     </Card>
   )
@@ -134,10 +278,13 @@ function InstrumentCard({ instrument, quote, loading }: {
 
 // ─── Résultats de recherche ───────────────────────────────────────────────────
 
-function SearchResults({ results, loading, query }: {
+function SearchResults({ results, loading, query, watchlistItems, onWatchlistAdded, onWatchlistRemoved }: {
   results: SearchResult[]
   loading: boolean
   query: string
+  watchlistItems: WatchlistItem[]
+  onWatchlistAdded: (item: WatchlistItem) => void
+  onWatchlistRemoved: (id: string) => void
 }) {
   const router = useRouter()
   if (!query) return null
@@ -198,11 +345,21 @@ function SearchResults({ results, loading, query }: {
                     <ChangeBadge change1d={r.change1d} />
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs"
-                      onClick={(e) => { e.stopPropagation(); openInstrument(r.ticker) }}>
-                      <TrendingUp className="h-3 w-3" />
-                      Détail
-                    </Button>
+                    <div className="flex items-center justify-end gap-1">
+                      <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs"
+                        onClick={(e) => { e.stopPropagation(); openInstrument(r.ticker) }}>
+                        <TrendingUp className="h-3 w-3" />
+                        Détail
+                      </Button>
+                      <WatchlistIconButton
+                        ticker={r.ticker}
+                        name={r.name}
+                        watchlistItem={watchlistItems.find((item) => item.ticker === r.ticker || item.isin === r.ticker) ?? null}
+                        onAdded={onWatchlistAdded}
+                        onRemoved={onWatchlistRemoved}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -222,10 +379,19 @@ export function MarketClient() {
   const [searchQuery, setSearchQuery] = useState("") // query soumise
   const [searchResults, setSearchResults] = useState<SearchResult[]>([])
   const [searchLoading, setSearchLoading] = useState(false)
+  const [watchlistItems, setWatchlistItems] = useState<WatchlistItem[]>([])
 
   // Prix des instruments statiques
   const [quotes, setQuotes] = useState<Record<string, QuoteData>>({})
   const [quotesLoading, setQuotesLoading] = useState(true)
+
+  const addToWatchlistState = useCallback((item: WatchlistItem) => {
+    setWatchlistItems((current) => [item, ...current.filter((currentItem) => currentItem.id !== item.id)])
+  }, [])
+
+  const removeFromWatchlistState = useCallback((id: string) => {
+    setWatchlistItems((current) => current.filter((item) => item.id !== id))
+  }, [])
 
   // Charger les prix des cartes au montage
   useEffect(() => {
@@ -235,6 +401,19 @@ export function MarketClient() {
       .then((data: Record<string, QuoteData>) => setQuotes(data))
       .catch(() => {})
       .finally(() => setQuotesLoading(false))
+  }, [])
+
+  // Charger l'état watchlist une fois pour afficher les icônes remplies.
+  useEffect(() => {
+    fetch("/api/watchlist")
+      .then(async (response) => {
+        if (!response.ok) return [] as WatchlistItem[]
+        return (await response.json()) as WatchlistItem[]
+      })
+      .then((items) => {
+        setWatchlistItems(items)
+      })
+      .catch(() => {})
   }, [])
 
   const handleSearch = useCallback(async (e: React.FormEvent) => {
@@ -292,7 +471,14 @@ export function MarketClient() {
         {searchLoading && <Loader2 className="h-4 w-4 animate-spin shrink-0 text-muted-foreground" />}
       </form>
 
-      <SearchResults results={searchResults} loading={searchLoading} query={searchQuery} />
+      <SearchResults
+        results={searchResults}
+        loading={searchLoading}
+        query={searchQuery}
+        watchlistItems={watchlistItems}
+        onWatchlistAdded={addToWatchlistState}
+        onWatchlistRemoved={removeFromWatchlistState}
+      />
 
       {!searchQuery && (
         <>
@@ -305,7 +491,15 @@ export function MarketClient() {
             </div>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {INDICES.map((i) => (
-                <InstrumentCard key={i.ticker} instrument={i} quote={quotes[i.ticker] ?? null} loading={quotesLoading} />
+                <InstrumentCard
+                  key={i.ticker}
+                  instrument={i}
+                  quote={quotes[i.ticker] ?? null}
+                  loading={quotesLoading}
+                  watchlistItem={watchlistItems.find((item) => item.ticker === i.ticker || item.isin === i.ticker) ?? null}
+                  onAdded={addToWatchlistState}
+                  onRemoved={removeFromWatchlistState}
+                />
               ))}
             </div>
           </section>
@@ -317,7 +511,15 @@ export function MarketClient() {
             </div>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {POPULAR_ETFS.map((i) => (
-                <InstrumentCard key={i.ticker} instrument={i} quote={quotes[i.ticker] ?? null} loading={quotesLoading} />
+                <InstrumentCard
+                  key={i.ticker}
+                  instrument={i}
+                  quote={quotes[i.ticker] ?? null}
+                  loading={quotesLoading}
+                  watchlistItem={watchlistItems.find((item) => item.ticker === i.ticker || item.isin === i.ticker) ?? null}
+                  onAdded={addToWatchlistState}
+                  onRemoved={removeFromWatchlistState}
+                />
               ))}
             </div>
           </section>

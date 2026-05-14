@@ -151,6 +151,7 @@ export default function MarketDetailClient({
         // ignore
       }
     })()
+
     async function run() {
       setChartLoading(true)
       setChartError(null)

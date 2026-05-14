@@ -29,6 +29,7 @@ Thumbs.db
 
 # test / coverage
 coverage/
+tsconfig.tsbuildinfo
 
 # docker
 docker-data/
