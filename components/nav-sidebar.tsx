@@ -16,7 +16,7 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { cn } from "@/lib/utils"
 import { useLanguage } from "@/lib/i18n/context"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -52,10 +52,18 @@ export function NavSidebar({ userRole }: NavSidebarProps) {
     (item) => !item.adminOnly || userRole === "admin"
   )
 
+  // Update the main content margin when sidebar collapses
+  useEffect(() => {
+    const main = document.querySelector('main')
+    if (main) {
+      main.style.marginLeft = collapsed ? '4.25rem' : '15rem'
+    }
+  }, [collapsed])
+
   return (
     <aside
       className={cn(
-        "surface-card sticky top-0 flex h-screen flex-col transition-all duration-200",
+        "surface-card fixed left-0 top-0 flex h-screen flex-col transition-all duration-200 z-50",
         collapsed ? "w-[4.25rem]" : "w-60"
       )}
     >

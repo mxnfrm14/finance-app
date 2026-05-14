@@ -13,9 +13,9 @@ export default async function AppLayout({
   const userRole = (session.user as { role?: string }).role
 
   return (
-    <div className="flex min-h-screen overflow-hidden">
+    <div className="min-h-screen">
       <NavSidebar userRole={userRole} />
-      <main className="surface-panel flex-1 overflow-y-auto">
+      <main className="surface-panel ml-60 min-h-screen overflow-y-auto transition-all duration-200" data-sidebar-collapsed="false">
         <div className="mx-auto min-h-full max-w-[1600px]">
           {children}
         </div>
