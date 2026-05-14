@@ -6,9 +6,7 @@ import { toast } from "sonner"
 import {
   ArrowUpDown,
   Bookmark,
-  CircleDashed,
   CircleDollarSign,
-  ExternalLink,
   Filter,
   Flame,
   Loader2,
@@ -22,6 +20,13 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
 
 // ---------------------------------------------------------------------------
@@ -71,6 +76,7 @@ export default function WatchlistPage() {
   const [adding, setAdding] = useState(false)
   const [form, setForm] = useState({ isin: "", name: "", ticker: "", addedPrice: "" })
   const [lookingUpIsin, setLookingUpIsin] = useState(false)
+  const [addModalOpen, setAddModalOpen] = useState(false)
   const [quotes, setQuotes] = useState<Record<string, QuoteData>>({})
   const [entryPrices, setEntryPrices] = useState<Record<string, number>>({})
   const [searchTerm, setSearchTerm] = useState("")
@@ -134,7 +140,7 @@ export default function WatchlistPage() {
     } finally {
       setLoading(false)
     }
-  }, [fetchQuotes])
+  }, [fetchQuotes, fetchEntryPrices])
 
   useEffect(() => { fetchItems() }, [fetchItems])
 
@@ -183,6 +189,7 @@ export default function WatchlistPage() {
     if (res.ok) {
       toast.success("Ajouté à la watchlist")
       setForm({ isin: "", name: "", ticker: "", addedPrice: "" })
+      setAddModalOpen(false)
       fetchItems()
     } else {
       const err = await res.json()
@@ -196,6 +203,22 @@ export default function WatchlistPage() {
       setItems((prev) => prev.filter((i) => i.id !== id))
       toast.success("Retiré de la watchlist")
     }
+  }
+
+  function handleSuggestAddFromSearch() {
+    const value = searchTerm.trim()
+    const upper = value.toUpperCase()
+    const isLikelyIsin = /^[A-Z]{2}[A-Z0-9]{10}$/.test(upper)
+    const isLikelyTicker = /^[A-Z0-9.-]{1,15}$/.test(upper)
+
+    setForm((prev) => ({
+      ...prev,
+      isin: isLikelyIsin ? upper : "",
+      ticker: !isLikelyIsin && isLikelyTicker ? upper : "",
+      name: !isLikelyIsin && value.length > 0 ? value : "",
+      addedPrice: "",
+    }))
+    setAddModalOpen(true)
   }
 
   const rows = useMemo(() => {
@@ -266,95 +289,83 @@ export default function WatchlistPage() {
 
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-6 p-6">
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <Card className="overflow-hidden border-border/60 bg-linear-to-br from-background via-background to-muted/30">
-          <CardContent className="p-6">
-            <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-              <div className="space-y-3">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/10">
-                    <Bookmark className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Suivi</p>
-                    <h1 className="text-3xl font-semibold tracking-tight">Watchlist</h1>
-                  </div>
+      <Card className="overflow-hidden border-border/60 bg-linear-to-br from-background via-background to-muted/30">
+        <CardContent className="p-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="space-y-2">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/10">
+                  <Bookmark className="h-5 w-5" />
                 </div>
-                <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
-                  Suivez vos idées et vos positions dans une vue claire, comparez le prix d&apos;ajout au cours actuel, et filtrez rapidement ce qui compte.
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  <Badge variant="secondary">{items.length} instruments</Badge>
-                  <Badge variant="outline">{stats.withTicker} avec ticker</Badge>
-                  <Badge variant="outline">{stats.gainers} gagnants</Badge>
-                  <Badge variant="outline">{stats.losers} perdants</Badge>
+                <div>
+                  <p className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">Suivi</p>
+                  <h1 className="text-2xl font-semibold tracking-tight">Watchlist</h1>
                 </div>
               </div>
-
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:w-[18rem] lg:grid-cols-2">
-                <div className="rounded-2xl border bg-card p-3 shadow-sm">
-                  <p className="text-xs text-muted-foreground">Total</p>
-                  <p className="mt-1 text-xl font-semibold tabular-nums">{items.length}</p>
-                </div>
-                <div className="rounded-2xl border bg-card p-3 shadow-sm">
-                  <p className="text-xs text-muted-foreground">Prix ajout</p>
-                  <p className="mt-1 text-xl font-semibold tabular-nums">{stats.withEntry}</p>
-                </div>
-                <div className="rounded-2xl border bg-card p-3 shadow-sm">
-                  <p className="text-xs text-muted-foreground">Hausse</p>
-                  <p className="mt-1 text-xl font-semibold tabular-nums text-profit">{stats.gainers}</p>
-                </div>
-                <div className="rounded-2xl border bg-card p-3 shadow-sm">
-                  <p className="text-xs text-muted-foreground">Baisse</p>
-                  <p className="mt-1 text-xl font-semibold tabular-nums text-loss">{stats.losers}</p>
-                </div>
+              <div className="flex flex-wrap gap-2">
+                <Badge variant="secondary">{items.length} instruments</Badge>
+                {/* <Badge variant="outline" className="text-profit">{stats.gainers} en hausse</Badge>
+                <Badge variant="outline" className="text-loss">{stats.losers} en baisse</Badge> */}
               </div>
             </div>
-          </CardContent>
-        </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <Plus className="h-4 w-4" />
-              Ajouter un instrument
-            </CardTitle>
-            <CardDescription>
-              Renseignez un ISIN, un ticker ou un nom d&apos;instrument.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleAdd} className="space-y-3">
-              <div className="relative">
-                <Input
-                  placeholder="ISIN (ex: FR0010315770)"
-                  value={form.isin}
-                  onChange={(e) => setForm((f) => ({ ...f, isin: e.target.value }))}
-                  required
-                  className="pr-9"
-                />
-                {lookingUpIsin && <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />}
+            <div className="grid grid-cols-2 gap-3 sm:w-[14rem]">
+              <div className="rounded-xl border bg-card p-2.5 shadow-sm">
+                <p className="text-xs text-muted-foreground">Hausse</p>
+                <p className="mt-0.5 text-lg font-semibold tabular-nums text-profit">{stats.gainers}</p>
               </div>
+              <div className="rounded-xl border bg-card p-2.5 shadow-sm">
+                <p className="text-xs text-muted-foreground">Baisse</p>
+                <p className="mt-0.5 text-lg font-semibold tabular-nums text-loss">{stats.losers}</p>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Dialog open={addModalOpen} onOpenChange={setAddModalOpen}>
+        <DialogContent className="sm:max-w-[32rem]">
+          <DialogHeader>
+            <DialogTitle>Ajouter un instrument</DialogTitle>
+            <DialogDescription>
+              Renseignez un ISIN, un ticker ou un nom d&apos;instrument. Le champ ISIN peut proposer un remplissage automatique.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleAdd} className="space-y-3">
+            <div className="relative">
               <Input
-                placeholder="Nom (ex: Amundi CW8)"
-                value={form.name}
-                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                placeholder="ISIN (ex: FR0010315770)"
+                value={form.isin}
+                onChange={(e) => setForm((f) => ({ ...f, isin: e.target.value }))}
                 required
+                className="pr-9"
               />
-              <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_9rem]">
-                <Input
-                  placeholder="Ticker (ex: CW8.PA)"
-                  value={form.ticker}
-                  onChange={(e) => setForm((f) => ({ ...f, ticker: e.target.value }))}
-                />
-                <Input
-                  placeholder="Prix d'ajout"
-                  value={form.addedPrice}
-                  onChange={(e) => setForm((f) => ({ ...f, addedPrice: e.target.value }))}
-                  inputMode="decimal"
-                />
-              </div>
-              <Button type="submit" disabled={adding} className="w-full gap-2">
+              {lookingUpIsin && <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />}
+            </div>
+            <Input
+              placeholder="Nom (ex: Amundi CW8)"
+              value={form.name}
+              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+              required
+            />
+            <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_9rem]">
+              <Input
+                placeholder="Ticker (ex: CW8.PA)"
+                value={form.ticker}
+                onChange={(e) => setForm((f) => ({ ...f, ticker: e.target.value }))}
+              />
+              <Input
+                placeholder="Prix d'ajout"
+                value={form.addedPrice}
+                onChange={(e) => setForm((f) => ({ ...f, addedPrice: e.target.value }))}
+                inputMode="decimal"
+              />
+            </div>
+            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <Button type="button" variant="outline" onClick={() => setAddModalOpen(false)}>
+                Annuler
+              </Button>
+              <Button type="submit" disabled={adding} className="gap-2">
                 {adding ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -367,10 +378,10 @@ export default function WatchlistPage() {
                   </>
                 )}
               </Button>
-            </form>
-          </CardContent>
-        </Card>
-      </div>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <Card>
         <CardContent className="p-5">
@@ -385,6 +396,10 @@ export default function WatchlistPage() {
               />
             </div>
             <div className="flex flex-wrap gap-2">
+              <Button type="button" size="sm" className="gap-2" onClick={() => setAddModalOpen(true)}>
+                <Plus className="h-3.5 w-3.5" />
+                Ajouter
+              </Button>
               {filterButtons.map((button) => {
                 const Icon = button.icon
                 const active = filterMode === button.key
@@ -434,6 +449,17 @@ export default function WatchlistPage() {
               <Bookmark className="mb-3 h-10 w-10 opacity-30" />
               <p className="font-medium">Aucun instrument ne correspond</p>
               <p className="mt-1 text-sm">Modifiez le filtre ou ajoutez un instrument ci-dessus.</p>
+              <Button
+                type="button"
+                variant="outline"
+                className="mt-4 gap-2"
+                onClick={handleSuggestAddFromSearch}
+              >
+                <Plus className="h-4 w-4" />
+                {searchTerm.trim().length > 0
+                  ? `Ajouter "${searchTerm.trim()}"`
+                  : "Ajouter un instrument"}
+              </Button>
             </div>
           ) : (
             <div className="grid gap-3">

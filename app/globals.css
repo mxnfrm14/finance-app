@@ -46,28 +46,29 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+  --shadow-soft: 0 1px 2px hsl(220 10% 10% / 0.04), 0 12px 32px hsl(220 10% 10% / 0.06);
 }
 
 :root {
   --radius: 0.625rem;
-  --background: oklch(0.98 0 0);
+  --background: oklch(0.985 0.01 250);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
+  --primary: oklch(0.255 0.03 255);
   --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
+  --secondary: oklch(0.97 0.01 250);
   --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
+  --muted: oklch(0.965 0.01 250);
+  --muted-foreground: oklch(0.48 0.02 250);
+  --accent: oklch(0.965 0.01 250);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --border: oklch(0.9 0.01 250);
+  --input: oklch(0.9 0.01 250);
+  --ring: oklch(0.62 0.08 255);
   /* Palette charts finance (colorée) */
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
@@ -91,24 +92,24 @@
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
+  --background: oklch(0.13 0.01 250);
   --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
+  --card: oklch(0.19 0.01 250);
   --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
+  --popover: oklch(0.19 0.01 250);
   --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
+  --primary: oklch(0.96 0.01 250);
   --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
+  --secondary: oklch(0.24 0.01 250);
   --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
+  --muted: oklch(0.24 0.01 250);
+  --muted-foreground: oklch(0.74 0.01 250);
+  --accent: oklch(0.24 0.01 250);
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.216);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+  --ring: oklch(0.72 0.04 250);
   --chart-1: oklch(0.488 0.243 264.376);
   --chart-2: oklch(0.696 0.17 162.48);
   --chart-3: oklch(0.769 0.188 70.08);
@@ -133,11 +134,28 @@
   * {
     @apply border-border outline-ring/50;
   }
-  body {
-    @apply bg-background text-foreground;
-  }
   html {
-    @apply font-sans;
+    @apply scroll-smooth font-sans;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    background-image:
+      radial-gradient(circle at top left, hsl(215 30% 96% / 0.95), transparent 34%),
+      radial-gradient(circle at top right, hsl(165 35% 96% / 0.7), transparent 28%),
+      linear-gradient(180deg, hsl(0 0% 100% / 0.72), transparent 30%);
+    background-attachment: fixed;
+  }
+
+  .dark body {
+    background-image:
+      radial-gradient(circle at top left, hsl(216 30% 16% / 0.55), transparent 32%),
+      radial-gradient(circle at top right, hsl(160 24% 16% / 0.35), transparent 28%),
+      linear-gradient(180deg, hsl(222 20% 9% / 0.9), transparent 36%);
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--primary) 22%, transparent);
+    color: var(--foreground);
   }
 }
 
@@ -154,4 +172,26 @@
 .pnl-negative {
   color: var(--loss);
   background: var(--loss-bg);
+}
+
+.surface-card {
+  border: 1px solid color-mix(in oklab, var(--border) 78%, transparent);
+  background: color-mix(in oklab, var(--card) 96%, transparent);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(14px);
+}
+
+.surface-card-strong {
+  border: 1px solid color-mix(in oklab, var(--border) 88%, transparent);
+  background: linear-gradient(180deg, color-mix(in oklab, var(--card) 97%, white 3%), var(--card));
+  box-shadow: 0 1px 2px hsl(220 10% 10% / 0.05), 0 18px 48px hsl(220 10% 10% / 0.08);
+}
+
+.surface-panel {
+  border: 1px solid color-mix(in oklab, var(--border) 84%, transparent);
+  background: linear-gradient(180deg, color-mix(in oklab, var(--background) 82%, white 18%), var(--background));
+}
+
+.shadow-soft {
+  box-shadow: var(--shadow-soft);
 }

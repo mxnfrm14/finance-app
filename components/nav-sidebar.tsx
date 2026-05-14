@@ -55,25 +55,26 @@ export function NavSidebar({ userRole }: NavSidebarProps) {
   return (
     <aside
       className={cn(
-        "flex flex-col h-screen bg-sidebar border-r border-sidebar-border transition-all duration-200",
-        collapsed ? "w-14" : "w-56"
+        "surface-card sticky top-0 flex h-screen flex-col transition-all duration-200",
+        collapsed ? "w-[4.25rem]" : "w-60"
       )}
     >
-      {/* Logo */}
       <div className={cn(
-        "flex items-center h-14 border-b border-sidebar-border px-3",
-        collapsed ? "justify-center" : "gap-2 px-4"
+        "flex items-center gap-3 border-b border-border/70 px-4 py-4",
+        collapsed ? "justify-center px-2" : "justify-start"
       )}>
-        <TrendingUp className="h-5 w-5 text-sidebar-primary shrink-0" />
+        <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary shadow-sm ring-1 ring-primary/10">
+          <TrendingUp className="h-5 w-5 shrink-0" />
+        </div>
         {!collapsed && (
-          <span className="font-semibold text-sm text-sidebar-foreground tracking-tight">
-            Bourse
-          </span>
+          <div>
+            <span className="block text-sm font-semibold tracking-tight text-foreground">Bourse</span>
+            <span className="block text-xs text-muted-foreground">Suivi & analyse</span>
+          </div>
         )}
       </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto py-3 space-y-0.5 px-2">
+      <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-3">
         {visibleItems.map((item) => {
           const active = pathname.startsWith(item.href)
           const label = t.nav[item.labelKey]
@@ -86,10 +87,10 @@ export function NavSidebar({ userRole }: NavSidebarProps) {
                     <Link
                       href={item.href}
                       className={cn(
-                        "flex items-center justify-center h-9 w-9 mx-auto rounded-md transition-colors",
+                        "mx-auto flex h-10 w-10 items-center justify-center rounded-2xl transition-all",
                         active
-                          ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                          : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                          ? "bg-primary text-primary-foreground shadow-sm"
+                          : "text-muted-foreground hover:bg-muted hover:text-foreground"
                       )}
                     />
                   }
@@ -106,10 +107,10 @@ export function NavSidebar({ userRole }: NavSidebarProps) {
               key={item.href}
               href={item.href}
               className={cn(
-                "flex items-center gap-3 h-9 px-3 rounded-md text-sm transition-colors",
+                "flex h-10 items-center gap-3 rounded-2xl px-3 text-sm transition-all",
                 active
-                  ? "bg-sidebar-primary text-sidebar-primary-foreground font-medium"
-                  : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                  ? "bg-primary text-primary-foreground font-medium shadow-sm"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
               )}
             >
               <item.icon className="h-4 w-4 shrink-0" />
@@ -119,14 +120,12 @@ export function NavSidebar({ userRole }: NavSidebarProps) {
         })}
       </nav>
 
-      {/* Footer */}
-      <div className="border-t border-sidebar-border p-2 space-y-0.5">
-        {/* Collapse toggle */}
+      <div className="space-y-2 border-t border-border/70 p-3">
         <button
           onClick={() => setCollapsed(!collapsed)}
           className={cn(
-            "flex items-center h-9 w-full rounded-md text-sm text-sidebar-foreground hover:bg-sidebar-accent transition-colors",
-            collapsed ? "justify-center" : "gap-3 px-3"
+            "flex h-10 w-full items-center rounded-2xl text-sm transition-all hover:bg-muted",
+            collapsed ? "justify-center" : "gap-3 px-3 text-muted-foreground hover:text-foreground"
           )}
         >
           {collapsed
@@ -135,14 +134,13 @@ export function NavSidebar({ userRole }: NavSidebarProps) {
           }
         </button>
 
-        {/* Logout */}
         {collapsed ? (
           <Tooltip>
             <TooltipTrigger
               render={
                 <button
                   onClick={() => signOut({ callbackUrl: "/login" })}
-                  className="flex items-center justify-center h-9 w-9 mx-auto rounded-md text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+                  className="mx-auto flex h-10 w-10 items-center justify-center rounded-2xl text-muted-foreground transition-all hover:bg-muted hover:text-foreground"
                 />
               }
             >
@@ -153,7 +151,7 @@ export function NavSidebar({ userRole }: NavSidebarProps) {
         ) : (
           <button
             onClick={() => signOut({ callbackUrl: "/login" })}
-            className="flex items-center gap-3 h-9 w-full px-3 rounded-md text-sm text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+            className="flex h-10 w-full items-center gap-3 rounded-2xl px-3 text-sm text-muted-foreground transition-all hover:bg-muted hover:text-foreground"
           >
             <LogOut className="h-4 w-4" />
             Déconnexion

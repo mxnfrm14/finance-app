@@ -13,10 +13,12 @@ export default async function AppLayout({
   const userRole = (session.user as { role?: string }).role
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex min-h-screen overflow-hidden">
       <NavSidebar userRole={userRole} />
-      <main className="flex-1 overflow-y-auto bg-background">
-        {children}
+      <main className="surface-panel flex-1 overflow-y-auto">
+        <div className="mx-auto min-h-full max-w-[1600px]">
+          {children}
+        </div>
       </main>
     </div>
   )

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { TrendingUp, Search, Bot, BarChart3, Layers, Loader2, ArrowUpRight, ArrowDownRight, Minus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
@@ -90,15 +90,15 @@ function InstrumentCard({ instrument, quote, loading }: {
   const goToInstrument = () => router.push(`/market/${encodeURIComponent(instrument.ticker)}`)
 
   return (
-    <Card className="flex flex-col">
+    <Card className="flex flex-col transition-all hover:-translate-y-0.5 hover:shadow-md">
       <CardHeader className="pb-2">
         <div className="flex items-start gap-2">
-          <div className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
-            isEtf ? "bg-blue-500/10" : "bg-primary/10"
+          <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ring-1",
+            isEtf ? "bg-blue-500/10 text-blue-500 ring-blue-500/10" : "bg-primary/10 text-primary ring-primary/10"
           )}>
             {isEtf
-              ? <Layers className="h-4 w-4 text-blue-500" />
-              : <BarChart3 className="h-4 w-4 text-primary" />
+              ? <Layers className="h-4 w-4" />
+              : <BarChart3 className="h-4 w-4" />
             }
           </div>
           <div className="min-w-0 flex-1">
@@ -145,21 +145,26 @@ function SearchResults({ results, loading, query }: {
   const openInstrument = (ticker: string) => router.push(`/market/${encodeURIComponent(ticker)}`)
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-center gap-2">
-        <Search className="h-4 w-4 text-muted-foreground" />
-        <h2 className="text-base font-semibold">
-          Résultats pour &ldquo;{query}&rdquo;
-        </h2>
-        {loading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
-      </div>
+    <Card>
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <Search className="h-4 w-4 text-muted-foreground" />
+          <CardTitle className="text-base">Résultats pour &ldquo;{query}&rdquo;</CardTitle>
+          {loading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+        </div>
+        <CardDescription>
+          Cours, variation et accès rapide au détail de l&apos;instrument.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {!loading && results.length === 0 ? (
+          <div className="rounded-2xl border border-dashed bg-muted/20 px-4 py-8 text-center text-sm text-muted-foreground">
+            Aucun résultat trouvé.
+          </div>
+        ) : null}
 
-      {!loading && results.length === 0 && (
-        <p className="text-sm text-muted-foreground py-4">Aucun résultat trouvé.</p>
-      )}
-
-      {results.length > 0 && (
-        <div className="border rounded-lg overflow-hidden">
+        {results.length > 0 && (
+          <div className="overflow-hidden rounded-2xl border bg-background/70">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b bg-muted/30">
@@ -204,8 +209,9 @@ function SearchResults({ results, loading, query }: {
             </tbody>
           </table>
         </div>
-      )}
-    </div>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 
@@ -264,7 +270,7 @@ export function MarketClient() {
   }, [query])
 
   return (
-    <main className="flex flex-col gap-8 p-6 max-w-6xl">
+    <main className="mx-auto flex max-w-6xl flex-col gap-8 p-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Marché</h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -272,7 +278,6 @@ export function MarketClient() {
         </p>
       </div>
 
-      {/* Barre de recherche */}
       <form onSubmit={handleSearch} className="flex items-center gap-2 max-w-xl">
         <div className="relative flex-1">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -284,17 +289,15 @@ export function MarketClient() {
             autoFocus
           />
         </div>
-        {searchLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground shrink-0" />}
+        {searchLoading && <Loader2 className="h-4 w-4 animate-spin shrink-0 text-muted-foreground" />}
       </form>
 
-      {/* Résultats de recherche */}
       <SearchResults results={searchResults} loading={searchLoading} query={searchQuery} />
 
       {!searchQuery && (
         <>
           <Separator />
 
-          {/* Indices */}
           <section>
             <div className="mb-4 flex items-center gap-2">
               <TrendingUp className="h-4 w-4 text-muted-foreground" />
@@ -307,7 +310,6 @@ export function MarketClient() {
             </div>
           </section>
 
-          {/* ETF populaires */}
           <section>
             <div className="mb-4 flex items-center gap-2">
               <Layers className="h-4 w-4 text-muted-foreground" />
