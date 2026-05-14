@@ -1,7 +1,7 @@
 import YahooFinance from "yahoo-finance2"
 import { resolveSymbol } from "./yahoo-finance"
 
-const yahooFinance = new YahooFinance()
+const yahooFinance = new YahooFinance({ suppressNotices: ['yahooSurvey', 'ripHistorical'] })
 
 export interface FundamentalsResult {
   ticker: string

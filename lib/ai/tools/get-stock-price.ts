@@ -16,7 +16,7 @@ export const getStockPriceDefinition: ToolDefinition = {
 
 export async function getStockPrice(input: unknown) {
   const { ticker } = input as { ticker: string }
-  const yf = new YahooFinance()
+  const yf = new YahooFinance({ suppressNotices: ['yahooSurvey', 'ripHistorical'] })
 
   const fetchQuote = async (sym: string) => {
     const raw = await yf.quote(sym, {}, { validateResult: false })

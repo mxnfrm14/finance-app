@@ -31,7 +31,7 @@ export async function getHistoricalPrices(input: unknown) {
     interval?: string
   }
 
-  const yf = new YahooFinance()
+  const yf = new YahooFinance({ suppressNotices: ['yahooSurvey', 'ripHistorical'] })
   const end = new Date()
   const start = new Date()
 

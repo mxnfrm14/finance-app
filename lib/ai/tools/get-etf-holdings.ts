@@ -40,7 +40,7 @@ async function fetchEtfHoldings(ticker: string, yf: InstanceType<typeof YahooFin
 
 export async function getEtfHoldings(input: unknown) {
   const { ticker } = input as { ticker: string }
-  const yf = new YahooFinance()
+  const yf = new YahooFinance({ suppressNotices: ['yahooSurvey', 'ripHistorical'] })
 
   try {
     const result = await fetchEtfHoldings(ticker, yf)

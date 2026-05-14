@@ -15,7 +15,7 @@ export const searchInstrumentDefinition: ToolDefinition = {
 
 export async function searchInstrument(input: unknown) {
   const { query } = input as { query: string }
-  const yf = new YahooFinance()
+  const yf = new YahooFinance({ suppressNotices: ['yahooSurvey', 'ripHistorical'] })
 
   try {
     const results = await yf.search(query, { quotesCount: 8, newsCount: 0 }, { validateResult: false })

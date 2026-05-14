@@ -1,7 +1,8 @@
 import YahooFinance from "yahoo-finance2"
 
 // yahoo-finance2 v3 utilise une API basée sur les classes
-const yahooFinance = new YahooFinance()
+// supprime le message de deprecation pour `historical()` (ripHistorical)
+const yahooFinance = new YahooFinance({ suppressNotices: ['yahooSurvey', 'ripHistorical'] })
 
 export interface QuoteResult {
   ticker: string

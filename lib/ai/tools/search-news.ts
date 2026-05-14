@@ -54,7 +54,7 @@ async function fetchNewsFromApi(query: string, count: number): Promise<NewsItem[
 }
 
 async function fetchNewsFromSdk(query: string, count: number): Promise<NewsItem[]> {
-  const yf = new YahooFinance()
+  const yf = new YahooFinance({ suppressNotices: ['yahooSurvey', 'ripHistorical'] })
   const results = await yf.search(query, { quotesCount: 0, newsCount: count }, { validateResult: false })
   const news = (results as { news?: Array<Record<string, unknown>> }).news ?? []
   return news.slice(0, count).map((n) => ({

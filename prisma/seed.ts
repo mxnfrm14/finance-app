@@ -24,12 +24,12 @@ async function main() {
 
   // Courtier de démo
   await prisma.broker.upsert({
-    where: { slug: "fortuneo" },
+    where: { userId_slug: { userId: admin.id, slug: "fortuneo" } },
     update: {},
     create: { name: "Fortuneo", slug: "fortuneo", userId: admin.id },
   })
   await prisma.broker.upsert({
-    where: { slug: "degiro" },
+    where: { userId_slug: { userId: admin.id, slug: "degiro" } },
     update: {},
     create: { name: "DEGIRO", slug: "degiro", userId: admin.id },
   })
