@@ -1,13 +1,27 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
-import { Bookmark, Plus, Trash2, TrendingUp, Loader2 } from "lucide-react"
+import { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import Link from "next/link"
 import { toast } from "sonner"
+import {
+  ArrowUpDown,
+  Bookmark,
+  CircleDashed,
+  CircleDollarSign,
+  ExternalLink,
+  Filter,
+  Flame,
+  Loader2,
+  Plus,
+  Search,
+  Trash2,
+  TrendingUp,
+} from "lucide-react"
+
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Button, buttonVariants } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 
 // ---------------------------------------------------------------------------
@@ -53,27 +67,71 @@ function fmtPct(pct: number) {
 export default function WatchlistPage() {
   const [items, setItems] = useState<WatchlistItem[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
   const [form, setForm] = useState({ isin: "", name: "", ticker: "", addedPrice: "" })
   const [lookingUpIsin, setLookingUpIsin] = useState(false)
   const [quotes, setQuotes] = useState<Record<string, QuoteData>>({})
+  const [entryPrices, setEntryPrices] = useState<Record<string, number>>({})
+  const [searchTerm, setSearchTerm] = useState("")
+  const [filterMode, setFilterMode] = useState<"all" | "winners" | "losers" | "added" | "price">("all")
   const isinTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const fetchQuotes = useCallback(async (data: WatchlistItem[]) => {
     const tickers = data.map((i) => i.ticker).filter(Boolean) as string[]
     if (tickers.length === 0) return
-    const res = await fetch(`/api/market/quote?tickers=${tickers.join(",")}`)
-    if (res.ok) setQuotes(await res.json())
+    try {
+      const res = await fetch(`/api/market/quote?tickers=${tickers.join(",")}`)
+      if (res.ok) setQuotes(await res.json())
+    } catch {
+      // ignore quote refresh errors; the list itself should still render
+    }
+  }, [])
+
+  const fetchEntryPrices = useCallback(async (data: WatchlistItem[]) => {
+    const targets = data.filter((item) => item.ticker && item.addedPrice == null)
+    if (targets.length === 0) return
+
+    const entries = await Promise.allSettled(
+      targets.map(async (item) => {
+        const addedAt = new Date(item.addedAt)
+        const period1 = new Date(addedAt.getTime() - 5 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]
+        const period2 = new Date(addedAt.getTime() + 5 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]
+        const res = await fetch(
+          `/api/market/chart?ticker=${encodeURIComponent(item.ticker!)}&period1=${period1}&period2=${period2}&interval=1d`
+        )
+        if (!res.ok) throw new Error("chart fetch failed")
+        const chart = await res.json() as { prices?: Array<{ close?: number | null }> }
+        const entry = chart.prices?.find((row) => row.close != null)?.close ?? null
+        return { id: item.id, price: entry }
+      })
+    )
+
+    const next: Record<string, number> = {}
+    for (const result of entries) {
+      if (result.status === "fulfilled" && result.value.price != null) {
+        next[result.value.id] = result.value.price
+      }
+    }
+    if (Object.keys(next).length > 0) setEntryPrices((prev) => ({ ...prev, ...next }))
   }, [])
 
   const fetchItems = useCallback(async () => {
-    const res = await fetch("/api/watchlist")
-    if (res.ok) {
+    setError(null)
+    try {
+      const res = await fetch("/api/watchlist")
+      if (!res.ok) {
+        setError("Impossible de charger la watchlist")
+        return
+      }
+
       const data: WatchlistItem[] = await res.json()
       setItems(data)
-      setLoading(false)
       fetchQuotes(data)
-    } else {
+      fetchEntryPrices(data)
+    } catch {
+      setError("Impossible de charger la watchlist")
+    } finally {
       setLoading(false)
     }
   }, [fetchQuotes])
@@ -140,157 +198,327 @@ export default function WatchlistPage() {
     }
   }
 
-  return (
-    <div className="p-6 max-w-4xl mx-auto space-y-6">
-      <div className="flex items-center gap-3">
-        <Bookmark className="h-6 w-6 text-primary" />
-        <div>
-          <h1 className="text-2xl font-semibold">Watchlist</h1>
-          <p className="text-sm text-muted-foreground">Instruments à surveiller</p>
-        </div>
-      </div>
+  const rows = useMemo(() => {
+    return items.map((item) => {
+      const quote = item.ticker ? quotes[item.ticker] : undefined
+      const currentPrice = quote?.price ?? null
+      const entryPrice = item.addedPrice ?? entryPrices[item.id] ?? null
+      const evolution = entryPrice != null && currentPrice != null
+        ? ((currentPrice - entryPrice) / entryPrice) * 100
+        : null
 
-      {/* Formulaire d'ajout */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <Plus className="h-4 w-4" />
-            Ajouter un instrument
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleAdd} className="flex flex-wrap gap-3">
-            <div className="relative w-48">
+      return { item, quote, currentPrice, entryPrice, evolution }
+    })
+  }, [items, quotes, entryPrices])
+
+  const filteredRows = useMemo(() => {
+    const normalizedSearch = searchTerm.trim().toLowerCase()
+    return rows.filter((row) => {
+      const haystack = `${row.item.name} ${row.item.isin} ${row.item.ticker ?? ""}`.toLowerCase()
+      const matchesSearch = !normalizedSearch || haystack.includes(normalizedSearch)
+      const matchesFilter =
+        filterMode === "all" ||
+        (filterMode === "winners" && (row.evolution ?? 0) > 0) ||
+        (filterMode === "losers" && (row.evolution ?? 0) < 0) ||
+        // 'added' and 'price' are sorting modes handled after filtering; keep all rows here
+        filterMode === "added" ||
+        filterMode === "price"
+
+      // First filter by search and simple filters (winners/losers/all)
+      const simpleMatch = matchesSearch && (filterMode === "all" || filterMode === "winners" || filterMode === "losers" ? matchesFilter : matchesSearch)
+      return simpleMatch
+    })
+  }, [rows, searchTerm, filterMode])
+
+  // Apply sorting when requested
+  const sortedRows = useMemo(() => {
+    if (filterMode === "added") {
+      // Sort by addedAt descending (newest first)
+      return [...filteredRows].sort((a, b) => new Date(b.item.addedAt).getTime() - new Date(a.item.addedAt).getTime())
+    }
+    if (filterMode === "price") {
+      // Sort by current price descending (nulls last)
+      return [...filteredRows].sort((a, b) => {
+        const pa = a.currentPrice ?? -Infinity
+        const pb = b.currentPrice ?? -Infinity
+        return pb - pa
+      })
+    }
+    return filteredRows
+  }, [filteredRows, filterMode])
+
+  const stats = useMemo(() => {
+    const withTicker = rows.filter((row) => Boolean(row.item.ticker)).length
+    const withEntry = rows.filter((row) => row.entryPrice != null).length
+    const gainers = rows.filter((row) => (row.evolution ?? 0) > 0).length
+    const losers = rows.filter((row) => (row.evolution ?? 0) < 0).length
+
+    return { withTicker, withEntry, gainers, losers }
+  }, [rows])
+
+  const filterButtons: Array<{ key: typeof filterMode; label: string; icon: typeof Filter }> = [
+    { key: "all", label: "Tous", icon: Filter },
+    { key: "winners", label: "En hausse", icon: Flame },
+    { key: "losers", label: "En baisse", icon: ArrowUpDown },
+    { key: "added", label: "Par ordre d'ajout", icon: Plus },
+    { key: "price", label: "Par prix actuel", icon: CircleDollarSign },
+  ]
+
+  return (
+    <div className="mx-auto flex max-w-7xl flex-col gap-6 p-6">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <Card className="overflow-hidden border-border/60 bg-linear-to-br from-background via-background to-muted/30">
+          <CardContent className="p-6">
+            <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+              <div className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/10">
+                    <Bookmark className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Suivi</p>
+                    <h1 className="text-3xl font-semibold tracking-tight">Watchlist</h1>
+                  </div>
+                </div>
+                <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
+                  Suivez vos idées et vos positions dans une vue claire, comparez le prix d&apos;ajout au cours actuel, et filtrez rapidement ce qui compte.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Badge variant="secondary">{items.length} instruments</Badge>
+                  <Badge variant="outline">{stats.withTicker} avec ticker</Badge>
+                  <Badge variant="outline">{stats.gainers} gagnants</Badge>
+                  <Badge variant="outline">{stats.losers} perdants</Badge>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:w-[18rem] lg:grid-cols-2">
+                <div className="rounded-2xl border bg-card p-3 shadow-sm">
+                  <p className="text-xs text-muted-foreground">Total</p>
+                  <p className="mt-1 text-xl font-semibold tabular-nums">{items.length}</p>
+                </div>
+                <div className="rounded-2xl border bg-card p-3 shadow-sm">
+                  <p className="text-xs text-muted-foreground">Prix ajout</p>
+                  <p className="mt-1 text-xl font-semibold tabular-nums">{stats.withEntry}</p>
+                </div>
+                <div className="rounded-2xl border bg-card p-3 shadow-sm">
+                  <p className="text-xs text-muted-foreground">Hausse</p>
+                  <p className="mt-1 text-xl font-semibold tabular-nums text-profit">{stats.gainers}</p>
+                </div>
+                <div className="rounded-2xl border bg-card p-3 shadow-sm">
+                  <p className="text-xs text-muted-foreground">Baisse</p>
+                  <p className="mt-1 text-xl font-semibold tabular-nums text-loss">{stats.losers}</p>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Plus className="h-4 w-4" />
+              Ajouter un instrument
+            </CardTitle>
+            <CardDescription>
+              Renseignez un ISIN, un ticker ou un nom d&apos;instrument.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleAdd} className="space-y-3">
+              <div className="relative">
+                <Input
+                  placeholder="ISIN (ex: FR0010315770)"
+                  value={form.isin}
+                  onChange={(e) => setForm((f) => ({ ...f, isin: e.target.value }))}
+                  required
+                  className="pr-9"
+                />
+                {lookingUpIsin && <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />}
+              </div>
               <Input
-                placeholder="ISIN (ex: FR0010315770)"
-                value={form.isin}
-                onChange={(e) => setForm((f) => ({ ...f, isin: e.target.value }))}
+                placeholder="Nom (ex: Amundi CW8)"
+                value={form.name}
+                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
                 required
               />
-              {lookingUpIsin && (
-                <Loader2 className="absolute right-2.5 top-2.5 h-4 w-4 animate-spin text-muted-foreground" />
-              )}
+              <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_9rem]">
+                <Input
+                  placeholder="Ticker (ex: CW8.PA)"
+                  value={form.ticker}
+                  onChange={(e) => setForm((f) => ({ ...f, ticker: e.target.value }))}
+                />
+                <Input
+                  placeholder="Prix d'ajout"
+                  value={form.addedPrice}
+                  onChange={(e) => setForm((f) => ({ ...f, addedPrice: e.target.value }))}
+                  inputMode="decimal"
+                />
+              </div>
+              <Button type="submit" disabled={adding} className="w-full gap-2">
+                {adding ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Ajout...
+                  </>
+                ) : (
+                  <>
+                    <Plus className="h-4 w-4" />
+                    Ajouter
+                  </>
+                )}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardContent className="p-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="relative flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Rechercher par nom, ISIN ou ticker"
+                className="pl-9"
+              />
             </div>
-            <Input
-              placeholder="Nom (ex: Amundi CW8)"
-              value={form.name}
-              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-              required
-              className="flex-1 min-w-40"
-            />
-            <Input
-              placeholder="Ticker (ex: CW8.PA)"
-              value={form.ticker}
-              onChange={(e) => setForm((f) => ({ ...f, ticker: e.target.value }))}
-              className="w-36"
-            />
-            <Button type="submit" disabled={adding}>
-              {adding ? "Ajout..." : "Ajouter"}
-            </Button>
-          </form>
+            <div className="flex flex-wrap gap-2">
+              {filterButtons.map((button) => {
+                const Icon = button.icon
+                const active = filterMode === button.key
+                return (
+                  <Button
+                    key={button.key}
+                    type="button"
+                    variant={active ? "default" : "outline"}
+                    size="sm"
+                    className="gap-2"
+                    onClick={() => setFilterMode(button.key)}
+                  >
+                    <Icon className="h-3.5 w-3.5" />
+                    {button.label}
+                  </Button>
+                )
+              })}
+            </div>
+          </div>
         </CardContent>
       </Card>
 
-      {/* Liste */}
       <Card>
-        <CardHeader>
-          <CardTitle className="text-base">
-            {items.length} instrument{items.length !== 1 ? "s" : ""}
+          <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <TrendingUp className="h-4 w-4" />
+            {sortedRows.length} résultat{sortedRows.length !== 1 ? "s" : ""}
           </CardTitle>
+          <CardDescription>
+            Chaque ligne affiche le prix d&apos;ajout, le cours courant et l&apos;évolution.
+          </CardDescription>
         </CardHeader>
         <CardContent>
+          {error && !loading && (
+            <div className="mb-4 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+              {error}
+            </div>
+          )}
           {loading ? (
-            <div className="space-y-2">
+            <div className="space-y-3">
               {[1, 2, 3].map((i) => (
-                <div key={i} className="h-14 bg-muted rounded animate-pulse" />
+                <div key={i} className="h-24 rounded-2xl border bg-muted/20 animate-pulse" />
               ))}
             </div>
-          ) : items.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <Bookmark className="h-8 w-8 mx-auto mb-3 opacity-30" />
-              <p>Aucun instrument en watchlist</p>
-              <p className="text-xs mt-1">Ajoutez des instruments à surveiller ci-dessus</p>
+          ) : sortedRows.length === 0 ? (
+            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed py-16 text-center text-muted-foreground">
+              <Bookmark className="mb-3 h-10 w-10 opacity-30" />
+              <p className="font-medium">Aucun instrument ne correspond</p>
+              <p className="mt-1 text-sm">Modifiez le filtre ou ajoutez un instrument ci-dessus.</p>
             </div>
           ) : (
-            <div className="divide-y">
-              {items.map((item) => {
-                const quote = item.ticker ? quotes[item.ticker] : undefined
-                const currentPrice = quote?.price
-                const evolution =
-                  item.addedPrice != null && currentPrice != null
-                    ? ((currentPrice - item.addedPrice) / item.addedPrice) * 100
-                    : null
+            <div className="grid gap-3">
+              {sortedRows.map(({ item, quote, currentPrice, entryPrice, evolution }) => {
                 const isLoading = item.ticker && !quote
-
                 return (
-                  <div key={item.id} className="flex items-center gap-4 py-3">
-                    {/* Identité */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-sm truncate">{item.name}</span>
-                        {item.ticker && (
-                          <Badge variant="secondary" className="text-xs shrink-0 font-mono">
-                            {item.ticker}
-                          </Badge>
-                        )}
+                  <div
+                    key={item.id}
+                    className="rounded-2xl border bg-card p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
+                  >
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                      <div className="min-w-0 flex-1 space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="truncate text-base font-semibold">{item.name}</h3>
+                          {item.ticker && <Badge variant="secondary" className="font-mono text-xs">{item.ticker}</Badge>}
+                          {evolution != null && (
+                            <span className={cn(
+                              "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium",
+                              evolution >= 0 ? "bg-profit/10 text-profit" : "bg-loss/10 text-loss"
+                            )}>
+                              {evolution >= 0 ? "En hausse" : "En baisse"}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground">{item.isin}</p>
+                        <div className="flex flex-wrap gap-2">
+                          <Link
+                            href={`/market/${encodeURIComponent(item.ticker ?? item.isin)}`}
+                            className={buttonVariants({ variant: "outline", size: "sm" })}
+                          >
+                            <TrendingUp className="mr-2 h-3.5 w-3.5" />
+                            Ouvrir
+                          </Link>
+                          {item.ticker && (
+                            <Link
+                              href={`/agent?mode=instrument&target=${item.ticker}`}
+                              className={buttonVariants({ variant: "ghost", size: "sm" })}
+                            >
+                              Analyser
+                            </Link>
+                          )}
+                        </div>
                       </div>
-                      <p className="text-xs text-muted-foreground">{item.isin}</p>
-                    </div>
 
-                    {/* Prix ajout */}
-                    {item.addedPrice != null && (
-                      <div className="text-right hidden sm:block shrink-0">
-                        <p className="text-xs text-muted-foreground">Ajout</p>
-                        <p className="text-sm tabular-nums">
-                          {fmtPrice(item.addedPrice, quote?.currency)}
-                        </p>
+                      <div className="grid gap-3 sm:grid-cols-3 lg:min-w-md">
+                        <div className="rounded-xl border bg-muted/30 p-3">
+                          <p className="text-xs text-muted-foreground">Prix d&apos;ajout</p>
+                          <p className="mt-1 text-sm font-semibold tabular-nums">
+                            {entryPrice != null ? fmtPrice(entryPrice, quote?.currency) : "—"}
+                          </p>
+                        </div>
+                        <div className="rounded-xl border bg-muted/30 p-3">
+                          <p className="text-xs text-muted-foreground">Cours actuel</p>
+                          {isLoading ? (
+                            <Loader2 className="mt-1 h-4 w-4 animate-spin text-muted-foreground" />
+                          ) : (
+                            <p className="mt-1 text-sm font-semibold tabular-nums">
+                              {currentPrice != null ? fmtPrice(currentPrice, quote?.currency) : "—"}
+                            </p>
+                          )}
+                        </div>
+                        <div className={cn(
+                          "rounded-xl border p-3",
+                          evolution == null ? "bg-muted/20" : evolution >= 0 ? "border-profit/20 bg-profit/10" : "border-loss/20 bg-loss/10"
+                        )}>
+                          <p className="text-xs text-muted-foreground">Évolution</p>
+                          <p className={cn(
+                            "mt-1 text-sm font-semibold tabular-nums",
+                            evolution == null ? "text-foreground" : evolution >= 0 ? "text-profit" : "text-loss"
+                          )}>
+                            {evolution != null ? fmtPct(evolution) : "—"}
+                          </p>
+                        </div>
                       </div>
-                    )}
 
-                    {/* Prix actuel */}
-                    <div className="text-right shrink-0 min-w-[5rem]">
-                      <p className="text-xs text-muted-foreground">Actuel</p>
-                      {isLoading ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground ml-auto mt-0.5" />
-                      ) : currentPrice != null ? (
-                        <p className="text-sm tabular-nums font-medium">
-                          {fmtPrice(currentPrice, quote?.currency)}
-                        </p>
-                      ) : (
-                        <p className="text-xs text-muted-foreground">—</p>
-                      )}
-                    </div>
-
-                    {/* Évolution depuis l'ajout */}
-                    <div className={cn(
-                      "text-right shrink-0 min-w-[4.5rem]",
-                      evolution == null && "invisible",
-                      evolution != null && evolution >= 0 ? "text-green-600 dark:text-green-400" : "text-red-500 dark:text-red-400"
-                    )}>
-                      <p className="text-xs opacity-70">Évolution</p>
-                      <p className="text-sm tabular-nums font-semibold">
-                        {evolution != null ? fmtPct(evolution) : ""}
-                      </p>
-                    </div>
-
-                    {/* Actions */}
-                    <div className="flex items-center gap-1 shrink-0">
-                      {item.ticker && (
-                        <Link href={`/agent?mode=instrument&target=${item.ticker}`}>
-                          <Button variant="ghost" size="sm" className="h-8 gap-1 text-xs">
-                            <TrendingUp className="h-3 w-3" />
-                            Analyser
-                          </Button>
-                        </Link>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
-                        onClick={() => handleDelete(item.id)}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
+                      <div className="flex items-center justify-end gap-2 lg:flex-col lg:items-end lg:justify-center">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-9 w-9 p-0 text-muted-foreground hover:text-destructive"
+                          onClick={() => handleDelete(item.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 )

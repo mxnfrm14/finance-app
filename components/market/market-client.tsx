@@ -46,7 +46,7 @@ const POPULAR_ETFS: StaticInstrument[] = [
   { ticker: "CW8.PA",  name: "Amundi MSCI World",  category: "etf", description: "MSCI World — éligible PEA" },
   { ticker: "EWLD.PA", name: "iShares MSCI World",  category: "etf", description: "MSCI World — réplication physique" },
   { ticker: "PANX.PA", name: "Amundi NASDAQ-100",   category: "etf", description: "NASDAQ-100 — éligible PEA" },
-  { ticker: "500A.PA", name: "Amundi S&P 500",      category: "etf", description: "S&P 500 — éligible PEA" },
+  { ticker: "500.PA", name: "Amundi S&P 500",      category: "etf", description: "S&P 500 — éligible PEA" },
 ]
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -87,6 +87,7 @@ function InstrumentCard({ instrument, quote, loading }: {
 }) {
   const router = useRouter()
   const isEtf = instrument.category === "etf"
+  const goToInstrument = () => router.push(`/market/${encodeURIComponent(instrument.ticker)}`)
 
   return (
     <Card className="flex flex-col">
@@ -122,9 +123,9 @@ function InstrumentCard({ instrument, quote, loading }: {
         </div>
         <p className="text-xs text-muted-foreground">{instrument.description}</p>
         <Button variant="outline" size="sm" className="w-full gap-1.5 mt-auto"
-          onClick={() => router.push(`/agent?mode=instrument&target=${instrument.ticker}`)}>
-          <Bot className="h-3.5 w-3.5" />
-          Analyser avec l&apos;IA
+          onClick={goToInstrument}>
+          <TrendingUp className="h-3.5 w-3.5" />
+          Voir le détail
         </Button>
       </CardContent>
     </Card>
@@ -140,6 +141,8 @@ function SearchResults({ results, loading, query }: {
 }) {
   const router = useRouter()
   if (!query) return null
+
+  const openInstrument = (ticker: string) => router.push(`/market/${encodeURIComponent(ticker)}`)
 
   return (
     <div className="space-y-2">
@@ -170,7 +173,11 @@ function SearchResults({ results, loading, query }: {
             </thead>
             <tbody className="divide-y">
               {results.map((r) => (
-                <tr key={r.ticker} className="hover:bg-muted/20 transition-colors">
+                <tr
+                  key={r.ticker}
+                  className="hover:bg-muted/20 transition-colors cursor-pointer"
+                  onClick={() => openInstrument(r.ticker)}
+                >
                   <td className="px-4 py-3 max-w-0 w-full">
                     <div className="font-medium truncate">{r.name}</div>
                     <div className="text-xs text-muted-foreground font-mono">{r.ticker}</div>
@@ -187,9 +194,9 @@ function SearchResults({ results, loading, query }: {
                   </td>
                   <td className="px-4 py-3 text-right">
                     <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs"
-                      onClick={() => router.push(`/agent?mode=instrument&target=${r.ticker}`)}>
-                      <Bot className="h-3 w-3" />
-                      Analyser
+                      onClick={(e) => { e.stopPropagation(); openInstrument(r.ticker) }}>
+                      <TrendingUp className="h-3 w-3" />
+                      Détail
                     </Button>
                   </td>
                 </tr>

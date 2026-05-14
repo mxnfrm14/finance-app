@@ -83,3 +83,31 @@ export async function searchInstruments(query: string) {
     return []
   }
 }
+
+/**
+ * Try to resolve a ticker to an ISIN using Yahoo search results metadata.
+ * Returns null if no ISIN-like identifier is available.
+ */
+export async function resolveTickerToISIN(ticker: string): Promise<string | null> {
+  try {
+    const results = await yahooFinance.search(ticker, { quotesCount: 5, newsCount: 0 }, { validateResult: false })
+    const quotes = (results as any).quotes ?? []
+    // Some search results include an `id` or `uuid` field which can be an ISIN-like identifier.
+    for (const q of quotes) {
+      if (!q) continue
+      if (q.symbol && q.symbol.toLowerCase() === ticker.toLowerCase()) {
+        if (q.id && typeof q.id === "string" && q.id.match(/^[A-Z]{2}[0-9A-Z]{9}[0-9]$/)) return q.id
+        if (q.isin && typeof q.isin === "string") return q.isin
+        if (q.uuid && typeof q.uuid === "string" && q.uuid.match(/^[A-Z]{2}[0-9A-Z]{9}[0-9]$/)) return q.uuid
+      }
+    }
+    // Fallback: for French ISINs, try to map FR... -> .PA ticker
+    if (ticker.endsWith(".PA")) {
+      // No direct ISIN from search; return null
+      return null
+    }
+    return null
+  } catch (err) {
+    return null
+  }
+}
