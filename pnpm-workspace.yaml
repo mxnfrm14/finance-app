@@ -1,0 +1,8 @@
+allowBuilds:
+  '@prisma/engines': true
+  prisma: true
+  sharp: true
+  esbuild: true
+  bcryptjs: false
+  msw: false
+  unrs-resolver: false

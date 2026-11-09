@@ -6,7 +6,7 @@ Bourse is a Next.js 16 application for investment tracking and AI-assisted marke
 
 - Portfolio tracking with positions, transactions, PRU recalculation, and P&L derived from transaction history.
 - Market data lookup powered by Yahoo Finance, including price, fundamentals, news, and instrument search.
-- AI assistant with provider fallback support for Anthropic, OpenAI, NVIDIA NIM, and Ollama.
+- AI assistant with personal encrypted connections for Anthropic, OpenAI, NVIDIA NIM, and OpenAI-compatible APIs (Responses or Chat Completions).
 - Watchlists, alerts, broker management, analytics, and an admin area.
 - Docker-based deployment for local development and production.
 
@@ -41,20 +41,47 @@ Bourse is a Next.js 16 application for investment tracking and AI-assisted marke
 Create a `.env` file for local development:
 
 ```env
-DATABASE_URL="postgresql://bourse:bourse@localhost:5432/bourse"
+DATABASE_URL="postgresql://bourse:YOUR_DATABASE_PASSWORD@100.10.4.14:5432/bourse"
 AUTH_SECRET="your-long-random-secret"
 AUTH_URL="http://localhost:3000"
 
-# At least one AI provider is required if you use the agent features
-ANTHROPIC_API_KEY="your-api-key"
-OPENAI_API_KEY=""
-NVIDIA_API_KEY=""
-OLLAMA_BASE_URL="http://localhost:11434"
+# Each user enters their own API key and model in Settings
+AI_ENCRYPTION_KEY="your-stable-random-secret-at-least-32-characters"
+AI_ALLOWED_API_ORIGINS=""
 ```
 
 For production, point `DATABASE_URL` to the PostgreSQL container or managed database used by your deployment, and set `AUTH_URL` to the public URL of the app.
 
 ## Local Development
+
+### This PC with the existing homelab database
+
+This checkout was synchronized from `/home/homelab/finance-app` on
+`homelab@100.10.4.14`, server commit `45903ba`, on 4 November 2026.
+The original PostgreSQL container and database have been restored. Docker runs
+on the server; it is not required on this PC.
+
+The local `.env` is configured to connect directly to PostgreSQL at
+`100.10.4.14:5432` with the existing database credentials. This PC must be able to
+reach that server address. No SSH tunnel is required.
+
+Start the application:
+
+```bash
+npm run dev
+```
+
+Open `http://localhost:3000/login` and use an existing account from the original
+database. The schema was checked against the restored database without applying
+migrations or running the demo seed.
+
+The previous local source, database files and environment are preserved in
+`.local-backups/local-before-server-20261104.tar.gz`. The database container created
+for that previous local version is stopped and preserved on the server as
+`bourse-postgres-dev-local-schema-20261104`.
+
+The following original instructions describe a separate setup with Docker locally.
+For that setup, use `DATABASE_URL="postgresql://bourse:bourse@localhost:5432/bourse"`.
 
 1. Install dependencies.
 
@@ -94,8 +121,17 @@ The production stack uses Docker Compose with three services:
 Basic flow:
 
 ```bash
-docker compose up -d
+docker compose up -d postgres
+docker compose build app migrate
+docker compose run --rm migrate
+docker compose up -d --no-deps app
+docker compose up -d nginx
+docker compose logs --tail=100 app
 ```
+
+Run these commands in order, stopping if a command fails. Transfer the updated source files (including Dockerfile, Compose, lockfile and migrations) to the server first; changes in the local checkout do not update the server automatically. Preserve the server's `.env` file. The `migrate` service is a one-shot image with the Prisma CLI; it does not require Node.js on the host. The application runtime image serves Next.js only. A container restart alone does not build updated code or run database migrations.
+
+For an existing deployment, back up PostgreSQL before migrations, for example `docker compose exec -T postgres pg_dump -U bourse bourse > backup-before-deploy.sql`. Keep the same Compose project directory/name so the existing database volume is reused.
 
 If you deploy on a LAN server, set `AUTH_URL` to the server IP or hostname, and make sure the database URL points to the internal Postgres service from the app container.
 
@@ -160,3 +196,7 @@ pnpm build
 - `yahoo-finance2` is server-side only and should not be imported in client components.
 - Do not use `useSession()` in client components; read the session in server components with `auth()` and pass data down as props.
 - P&L must be computed from transaction history through `lib/db/queries/portfolio-summary.ts`, not from static position fields.
+
+## Personal AI connections
+
+Apply `pnpm prisma:deploy` before using the updated AI settings, then let each user enter their own API key and model. Global AI keys are no longer used. See [AI integration setup and subscription prerequisites](docs/AI_INTEGRATIONS.md). ChatGPT and Claude subscription connections are not active; the shared hosted application needs the appropriate provider access before those flows can be implemented.

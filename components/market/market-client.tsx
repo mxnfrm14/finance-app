@@ -216,13 +216,13 @@ function InstrumentCard({ instrument, quote, loading, watchlistItem, onAdded, on
   instrument: StaticInstrument
   quote: QuoteData | null
   loading: boolean
-  watchlistItem: WatchlistItem | null
+watchlistItem: WatchlistItem | null
   onAdded: (item: WatchlistItem) => void
   onRemoved: (id: string) => void
 }) {
   const router = useRouter()
   const isEtf = instrument.category === "etf"
-  const goToInstrument = () => router.push(`/market/${encodeURIComponent(instrument.ticker)}`)
+const goToInstrument = () => router.push(`/market/${encodeURIComponent(instrument.ticker)}`)
 
   return (
     <Card className="flex flex-col transition-all hover:-translate-y-0.5 hover:shadow-md">
@@ -257,13 +257,13 @@ function InstrumentCard({ instrument, quote, loading, watchlistItem, onAdded, on
           )}
         </div>
         <p className="text-xs text-muted-foreground">{instrument.description}</p>
-        <div className="mt-auto flex min-w-0 items-center gap-2">
-          <Button variant="outline" size="sm" className="min-w-0 flex-1 gap-1.5"
-            onClick={goToInstrument}>
-            <TrendingUp className="h-3.5 w-3.5" />
-            Voir le détail
-          </Button>
-          <WatchlistIconButton
+<div className="mt-auto flex min-w-0 items-center gap-2">
+        <Button variant="outline" size="sm" className="min-w-0 flex-1 gap-1.5"
+          onClick={goToInstrument}>
+          <TrendingUp className="h-3.5 w-3.5" />
+          Voir le détail
+        </Button>
+<WatchlistIconButton
             ticker={instrument.ticker}
             name={instrument.name}
             watchlistItem={watchlistItem}
@@ -282,7 +282,7 @@ function SearchResults({ results, loading, query, watchlistItems, onWatchlistAdd
   results: SearchResult[]
   loading: boolean
   query: string
-  watchlistItems: WatchlistItem[]
+watchlistItems: WatchlistItem[]
   onWatchlistAdded: (item: WatchlistItem) => void
   onWatchlistRemoved: (id: string) => void
 }) {
@@ -294,24 +294,24 @@ function SearchResults({ results, loading, query, watchlistItems, onWatchlistAdd
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center gap-2">
-          <Search className="h-4 w-4 text-muted-foreground" />
-          <CardTitle className="text-base">Résultats pour &ldquo;{query}&rdquo;</CardTitle>
-          {loading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
-        </div>
-        <CardDescription>
+      <div className="flex items-center gap-2">
+        <Search className="h-4 w-4 text-muted-foreground" />
+        <CardTitle className="text-base">          Résultats pour &ldquo;{query}&rdquo;</CardTitle>
+        {loading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+      </div>
+<CardDescription>
           Cours, variation et accès rapide au détail de l&apos;instrument.
         </CardDescription>
       </CardHeader>
       <CardContent>
-        {!loading && results.length === 0 ? (
-          <div className="rounded-2xl border border-dashed bg-muted/20 px-4 py-8 text-center text-sm text-muted-foreground">
-            Aucun résultat trouvé.
+      {!loading && results.length === 0 ? (
+        <div className="rounded-2xl border border-dashed bg-muted/20 px-4 py-8 text-center text-sm text-muted-foreground">
+Aucun résultat trouvé.
           </div>
-        ) : null}
+      ) : null}
 
-        {results.length > 0 && (
-          <div className="overflow-hidden rounded-2xl border bg-background/70">
+      {results.length > 0 && (
+        <div className="overflow-hidden rounded-2xl border bg-background/70">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b bg-muted/30">
@@ -326,10 +326,10 @@ function SearchResults({ results, loading, query, watchlistItems, onWatchlistAdd
             <tbody className="divide-y">
               {results.map((r) => (
                 <tr
-                  key={r.ticker}
-                  className="hover:bg-muted/20 transition-colors cursor-pointer"
+key={r.ticker}
+className="hover:bg-muted/20 transition-colors cursor-pointer"
                   onClick={() => openInstrument(r.ticker)}
-                >
+>
                   <td className="px-4 py-3 max-w-0 w-full">
                     <div className="font-medium truncate">{r.name}</div>
                     <div className="text-xs text-muted-foreground font-mono">{r.ticker}</div>
@@ -345,13 +345,13 @@ function SearchResults({ results, loading, query, watchlistItems, onWatchlistAdd
                     <ChangeBadge change1d={r.change1d} />
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs"
-                        onClick={(e) => { e.stopPropagation(); openInstrument(r.ticker) }}>
-                        <TrendingUp className="h-3 w-3" />
-                        Détail
-                      </Button>
-                      <WatchlistIconButton
+<div className="flex items-center justify-end gap-1">
+                    <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs"
+                      onClick={(e) => { e.stopPropagation(); openInstrument(r.ticker) }}>
+                      <TrendingUp className="h-3 w-3" />
+                      Détail
+                    </Button>
+<WatchlistIconButton
                         ticker={r.ticker}
                         name={r.name}
                         watchlistItem={watchlistItems.find((item) => item.ticker === r.ticker || item.isin === r.ticker) ?? null}
@@ -366,20 +366,20 @@ function SearchResults({ results, loading, query, watchlistItems, onWatchlistAdd
             </tbody>
           </table>
         </div>
-        )}
-      </CardContent>
+      )}
+    </CardContent>
     </Card>
   )
 }
 
 // ─── Composant principal ──────────────────────────────────────────────────────
 
-export function MarketClient() {
-  const [query, setQuery] = useState("")
+export function MarketClient({ initialQuery = "" }: { initialQuery?: string }) {
+  const [query, setQuery] = useState(initialQuery)
   const [searchQuery, setSearchQuery] = useState("") // query soumise
   const [searchResults, setSearchResults] = useState<SearchResult[]>([])
   const [searchLoading, setSearchLoading] = useState(false)
-  const [watchlistItems, setWatchlistItems] = useState<WatchlistItem[]>([])
+const [watchlistItems, setWatchlistItems] = useState<WatchlistItem[]>([])
 
   // Prix des instruments statiques
   const [quotes, setQuotes] = useState<Record<string, QuoteData>>({})
@@ -457,34 +457,34 @@ export function MarketClient() {
         </p>
       </div>
 
-      <form onSubmit={handleSearch} className="flex items-center gap-2 max-w-xl">
+            <form onSubmit={handleSearch} className="flex items-center gap-2 max-w-xl">
         <div className="relative flex-1">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Ticker, ISIN ou nom — ex: total, MC.PA, CW8…"
+            aria-label="Rechercher un instrument par ticker, ISIN ou nom"
             className="pl-8"
-            autoFocus
           />
         </div>
         {searchLoading && <Loader2 className="h-4 w-4 animate-spin shrink-0 text-muted-foreground" />}
       </form>
 
-      <SearchResults
-        results={searchResults}
-        loading={searchLoading}
-        query={searchQuery}
+            <SearchResults
+results={searchResults}
+loading={searchLoading}
+query={searchQuery}
         watchlistItems={watchlistItems}
         onWatchlistAdded={addToWatchlistState}
         onWatchlistRemoved={removeFromWatchlistState}
-      />
+/>
 
       {!searchQuery && (
         <>
           <Separator />
 
-          <section>
+                    <section>
             <div className="mb-4 flex items-center gap-2">
               <TrendingUp className="h-4 w-4 text-muted-foreground" />
               <h2 className="text-base font-semibold">Indices de référence</h2>
@@ -492,19 +492,19 @@ export function MarketClient() {
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {INDICES.map((i) => (
                 <InstrumentCard
-                  key={i.ticker}
-                  instrument={i}
-                  quote={quotes[i.ticker] ?? null}
-                  loading={quotesLoading}
+key={i.ticker}
+instrument={i}
+quote={quotes[i.ticker] ?? null}
+loading={quotesLoading}
                   watchlistItem={watchlistItems.find((item) => item.ticker === i.ticker || item.isin === i.ticker) ?? null}
                   onAdded={addToWatchlistState}
                   onRemoved={removeFromWatchlistState}
-                />
+/>
               ))}
             </div>
           </section>
 
-          <section>
+                    <section>
             <div className="mb-4 flex items-center gap-2">
               <Layers className="h-4 w-4 text-muted-foreground" />
               <h2 className="text-base font-semibold">ETF populaires</h2>
@@ -512,14 +512,14 @@ export function MarketClient() {
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {POPULAR_ETFS.map((i) => (
                 <InstrumentCard
-                  key={i.ticker}
-                  instrument={i}
-                  quote={quotes[i.ticker] ?? null}
-                  loading={quotesLoading}
+key={i.ticker}
+instrument={i}
+quote={quotes[i.ticker] ?? null}
+loading={quotesLoading}
                   watchlistItem={watchlistItems.find((item) => item.ticker === i.ticker || item.isin === i.ticker) ?? null}
                   onAdded={addToWatchlistState}
                   onRemoved={removeFromWatchlistState}
-                />
+/>
               ))}
             </div>
           </section>

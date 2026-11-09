@@ -22,14 +22,19 @@ export interface ToolDefinition {
 
 export type ExecuteTool = (name: string, input: unknown) => Promise<unknown>
 
+export interface AgentRunOptions {
+  signal?: AbortSignal
+  maxOutputTokens?: number
+}
+
 export interface AIProvider {
   name: string
   model: string
-  isAvailable(): Promise<boolean>
   runAgentStream(
     messages: Array<{ role: "user" | "assistant"; content: string }>,
     tools: ToolDefinition[],
     systemPrompt: string,
-    executeTool: ExecuteTool
+    executeTool: ExecuteTool,
+    options?: AgentRunOptions
   ): AsyncGenerator<AgentEvent>
 }

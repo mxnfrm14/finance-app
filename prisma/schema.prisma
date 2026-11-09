@@ -17,6 +17,7 @@ model User {
   passwordHash  String?
   language      String    @default("fr")
   role          String    @default("member") // "admin" | "member"
+  aiProvider    String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -28,6 +29,7 @@ model User {
   agentSessions  AgentSession[]
   watchlistItems WatchlistItem[]
   priceAlerts    PriceAlert[]
+  aiConnections  AiConnection[]
 }
 
 model Account {
@@ -244,4 +246,17 @@ model AppConfig {
   key       String   @id
   value     String
   updatedAt DateTime @updatedAt
+}
+
+model AiConnection {
+  userId          String
+  provider        String
+  model           String
+  protocol        String
+  baseUrl         String?
+  encryptedApiKey String?
+  updatedAt       DateTime @updatedAt
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, provider])
 }

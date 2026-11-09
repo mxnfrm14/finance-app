@@ -4,114 +4,151 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { signIn } from "next-auth/react"
+import { ArrowRight, Loader2 } from "lucide-react"
+import { AuthShell } from "@/components/auth/auth-shell"
+import { PasswordInput } from "@/components/auth/password-input"
+import { Button } from "@/components/ui/button"
+import { useLanguage } from "@/lib/i18n/context"
 
 export default function RegisterPage() {
   const router = useRouter()
+  const { language, t } = useLanguage()
+  const fr = language === "fr"
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault()
     setLoading(true)
     setError("")
-
-    const res = await fetch("/api/auth/register", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, email, password }),
-    })
-
-    if (!res.ok) {
-      const data = await res.json()
-      setError(typeof data.error === "string" ? data.error : "Erreur lors de la création du compte")
+    try {
+      const response = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, email, password })
+      })
+      if (!response.ok) {
+        const data = await response.json()
+        setError(
+          typeof data.error === "string"
+            ? data.error
+            : fr
+              ? "Erreur lors de la création du compte."
+              : "Unable to create your account."
+        )
+        return
+      }
+      const result = await signIn("credentials", { email, password, redirect: false })
+      if (result?.error) {
+        router.push("/login")
+      } else {
+        router.push("/dashboard")
+        router.refresh()
+      }
+    } catch {
+      setError(
+        fr
+          ? "Connexion impossible pour le moment. Veuillez réessayer."
+          : "Unable to connect right now. Please try again."
+      )
+    } finally {
       setLoading(false)
-      return
-    }
-
-    // Connexion automatique après inscription
-    const result = await signIn("credentials", { email, password, redirect: false })
-    if (result?.error) {
-      setError("Compte créé — veuillez vous connecter.")
-      router.push("/login")
-    } else {
-      router.push("/dashboard")
-      router.refresh()
     }
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
-      <div className="w-full max-w-md p-8 space-y-6 bg-card rounded-xl border shadow-sm">
-        <div className="text-center space-y-2">
-          <h1 className="text-2xl font-semibold tracking-tight">Créer un compte</h1>
-          <p className="text-sm text-muted-foreground">Bourse — Suivi d&apos;investissements</p>
+    <AuthShell
+      title={fr ? "Tout commence ici" : "It all starts here"}
+      subtitle={
+        fr
+          ? "Créez votre compte et donnez une vue d’ensemble à vos investissements."
+          : "Create your account and bring your investments into focus."
+      }
+    >
+      <form onSubmit={handleSubmit} aria-busy={loading} className="space-y-4">
+        <div className="space-y-2">
+          <label htmlFor="name" className="block text-xs font-medium">
+            {fr ? "Nom complet" : "Full name"}
+          </label>
+          <input
+            id="name"
+            name="name"
+            type="text"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            required
+            autoComplete="name"
+            className="auth-input"
+            placeholder="Alice Dupont"
+          />
         </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <label htmlFor="name" className="text-sm font-medium">Nom complet</label>
-            <input
-              id="name"
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-              autoComplete="name"
-              className="w-full px-3 py-2 border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              placeholder="Alice Dupont"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label htmlFor="email" className="text-sm font-medium">Email</label>
-            <input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              autoComplete="email"
-              className="w-full px-3 py-2 border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              placeholder="vous@exemple.fr"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label htmlFor="password" className="text-sm font-medium">Mot de passe</label>
-            <input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              minLength={8}
-              autoComplete="new-password"
-              className="w-full px-3 py-2 border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              placeholder="8 caractères minimum"
-            />
-          </div>
-
-          {error && <p className="text-sm text-destructive text-center">{error}</p>}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-2 px-4 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
+        <div className="space-y-2">
+          <label htmlFor="email" className="block text-xs font-medium">
+            {fr ? "Adresse e-mail" : "Email address"}
+          </label>
+          <input
+            id="email"
+            name="email"
+            type="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            required
+            autoComplete="email"
+            className="auth-input"
+            placeholder="vous@exemple.fr"
+          />
+        </div>
+        <div className="space-y-2">
+          <label htmlFor="password" className="block text-xs font-medium">
+            {t.auth.password}
+          </label>
+          <PasswordInput
+            id="password"
+            name="password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            required
+            minLength={8}
+            autoComplete="new-password"
+            placeholder={fr ? "8 caractères minimum" : "At least 8 characters"}
+            aria-describedby="password-hint"
+          />
+          <p id="password-hint" className="text-[11px] text-muted-foreground">
+            {fr ? "Utilisez au moins 8 caractères." : "Use at least 8 characters."}
+          </p>
+        </div>
+        {error && (
+          <p
+            role="alert"
+            className="rounded-xl bg-loss px-3 py-2.5 text-xs leading-relaxed text-loss"
           >
-            {loading ? "Création en cours…" : "Créer mon compte"}
-          </button>
-        </form>
-
-        <p className="text-center text-sm text-muted-foreground">
-          Déjà un compte ?{" "}
-          <Link href="/login" className="text-foreground font-medium hover:underline">
-            Se connecter
-          </Link>
-        </p>
-      </div>
-    </div>
+            {error}
+          </p>
+        )}
+        <Button type="submit" disabled={loading} className="mt-2 h-11 w-full justify-between px-4">
+          {loading
+            ? fr
+              ? "Création en cours…"
+              : "Creating account…"
+            : fr
+              ? "Créer mon compte"
+              : "Create my account"}
+          {loading ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <ArrowRight className="size-4" />
+          )}
+        </Button>
+      </form>
+      <p className="mt-7 text-center text-xs text-muted-foreground">
+        {fr ? "Déjà un compte ?" : "Already have an account?"}{" "}
+        <Link href="/login" className="font-medium text-primary underline-offset-4 hover:underline">
+          {t.auth.loginButton}
+        </Link>
+      </p>
+    </AuthShell>
   )
 }

@@ -6,166 +6,191 @@ import { signOut } from "next-auth/react"
 import {
   LayoutDashboard,
   BriefcaseBusiness,
-  Bot,
+  Sparkles,
   TrendingUp,
-  BarChart3,
+  ChartNoAxesCombined,
   Bookmark,
-  Settings,
+  Settings2,
   ShieldCheck,
   LogOut,
-  ChevronLeft,
-  ChevronRight,
+  PanelLeftClose,
+  PanelLeftOpen,
+  ArrowUpRight
 } from "lucide-react"
-import { useState, useEffect } from "react"
 import { cn } from "@/lib/utils"
 import { useLanguage } from "@/lib/i18n/context"
+import { BrandMark } from "@/components/brand-mark"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
-interface NavItem {
-  href: string
-  icon: React.ElementType
-  labelKey: keyof ReturnType<typeof useLanguage>["t"]["nav"]
-  adminOnly?: boolean
-}
-
-const NAV_ITEMS: NavItem[] = [
-  { href: "/dashboard",  icon: LayoutDashboard,  labelKey: "dashboard" },
-  { href: "/portfolio",  icon: BriefcaseBusiness, labelKey: "portfolio" },
-  { href: "/agent",      icon: Bot,               labelKey: "agent" },
-  { href: "/market",     icon: TrendingUp,        labelKey: "market" },
-  { href: "/analytics",  icon: BarChart3,         labelKey: "analytics" },
-  { href: "/watchlist",  icon: Bookmark,          labelKey: "watchlist" },
-  { href: "/settings",   icon: Settings,          labelKey: "settings" },
-  { href: "/admin",      icon: ShieldCheck,       labelKey: "admin", adminOnly: true },
-]
+const NAV_ITEMS = [
+  { href: "/dashboard", icon: LayoutDashboard, labelKey: "dashboard" },
+  { href: "/portfolio", icon: BriefcaseBusiness, labelKey: "portfolio" },
+  { href: "/market", icon: TrendingUp, labelKey: "market" },
+  { href: "/watchlist", icon: Bookmark, labelKey: "watchlist" },
+  { href: "/analytics", icon: ChartNoAxesCombined, labelKey: "analytics" },
+  { href: "/agent", icon: Sparkles, labelKey: "agent" }
+] as const
 
 interface NavSidebarProps {
   userRole?: string
+  collapsed?: boolean
+  onToggle?: () => void
+  onNavigate?: () => void
+  className?: string
 }
 
-export function NavSidebar({ userRole }: NavSidebarProps) {
+export function NavSidebar({
+  userRole,
+  collapsed = false,
+  onToggle,
+  onNavigate,
+  className
+}: NavSidebarProps) {
   const pathname = usePathname()
-  const { t } = useLanguage()
-  const [collapsed, setCollapsed] = useState(false)
+  const { t, language } = useLanguage()
+  const fr = language === "fr"
 
-  const visibleItems = NAV_ITEMS.filter(
-    (item) => !item.adminOnly || userRole === "admin"
-  )
-
-  // Update the main content margin when sidebar collapses
-  useEffect(() => {
-    const main = document.querySelector('main')
-    if (main) {
-      main.style.marginLeft = collapsed ? '4.25rem' : '15rem'
-    }
-  }, [collapsed])
+  function navLink(href: string, Icon: React.ElementType, label: string) {
+    const active = pathname === href || pathname.startsWith(`${href}/`)
+    const link = (
+      <Link
+        href={href}
+        onClick={onNavigate}
+        aria-current={active ? "page" : undefined}
+        aria-label={collapsed ? label : undefined}
+        className={cn(
+          "group flex min-h-11 items-center rounded-xl text-[13px] font-medium transition-colors",
+          collapsed ? "justify-center px-0" : "gap-3 px-3.5",
+          active
+            ? "bg-sidebar-accent text-sidebar-primary"
+            : "text-sidebar-foreground hover:bg-muted hover:text-foreground"
+        )}
+      >
+        <Icon className="size-[18px] shrink-0" strokeWidth={active ? 2 : 1.7} />
+        {!collapsed && (
+          <>
+            <span className="flex-1">{label}</span>
+            {active && <span className="size-1.5 rounded-full bg-primary" />}
+          </>
+        )}
+      </Link>
+    )
+    return collapsed ? (
+      <Tooltip key={href}>
+        <TooltipTrigger render={link} />
+        <TooltipContent side="right">{label}</TooltipContent>
+      </Tooltip>
+    ) : (
+      <div key={href}>{link}</div>
+    )
+  }
 
   return (
     <aside
       className={cn(
-        "surface-card fixed left-0 top-0 flex h-screen flex-col transition-all duration-200 z-50",
-        collapsed ? "w-[4.25rem]" : "w-60"
+        "flex h-full shrink-0 flex-col border-r border-sidebar-border bg-sidebar",
+        collapsed ? "w-[84px]" : "w-[228px]",
+        className
       )}
     >
-      <div className={cn(
-        "flex items-center gap-3 border-b border-border/70 px-4 py-4",
-        collapsed ? "justify-center px-2" : "justify-start"
-      )}>
-        <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary shadow-sm ring-1 ring-primary/10">
-          <TrendingUp className="h-5 w-5 shrink-0" />
-        </div>
-        {!collapsed && (
-          <div>
-            <span className="block text-sm font-semibold tracking-tight text-foreground">Bourse</span>
-            <span className="block text-xs text-muted-foreground">Suivi & analyse</span>
-          </div>
+      <Link
+        href="/dashboard"
+        onClick={onNavigate}
+        aria-label="Bourse"
+        className={cn(
+          "flex h-[84px] shrink-0 items-center",
+          collapsed ? "justify-center" : "gap-3 px-6"
         )}
-      </div>
-
-      <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-3">
-        {visibleItems.map((item) => {
-          const active = pathname.startsWith(item.href)
-          const label = t.nav[item.labelKey]
-
-          if (collapsed) {
-            return (
-              <Tooltip key={item.href}>
-                <TooltipTrigger
-                  render={
-                    <Link
-                      href={item.href}
-                      className={cn(
-                        "mx-auto flex h-10 w-10 items-center justify-center rounded-2xl transition-all",
-                        active
-                          ? "bg-primary text-primary-foreground shadow-sm"
-                          : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                      )}
-                    />
-                  }
-                >
-                  <item.icon className="h-4 w-4" />
-                </TooltipTrigger>
-                <TooltipContent side="right">{label}</TooltipContent>
-              </Tooltip>
-            )
-          }
-
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                "flex h-10 items-center gap-3 rounded-2xl px-3 text-sm transition-all",
-                active
-                  ? "bg-primary text-primary-foreground font-medium shadow-sm"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
-              )}
-            >
-              <item.icon className="h-4 w-4 shrink-0" />
-              {label}
-            </Link>
-          )
-        })}
-      </nav>
-
-      <div className="space-y-2 border-t border-border/70 p-3">
-        <button
-          onClick={() => setCollapsed(!collapsed)}
+      >
+        <BrandMark />
+        {!collapsed && (
+          <span className="text-xl font-semibold tracking-[-0.06em] text-foreground">
+            bourse<span className="text-primary">.</span>
+          </span>
+        )}
+      </Link>
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4">
+        <p
           className={cn(
-            "flex h-10 w-full items-center rounded-2xl text-sm transition-all hover:bg-muted",
-            collapsed ? "justify-center" : "gap-3 px-3 text-muted-foreground hover:text-foreground"
+            "mb-3 mt-6 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground",
+            collapsed ? "text-center" : "px-3.5"
           )}
         >
-          {collapsed
-            ? <ChevronRight className="h-4 w-4" />
-            : <><ChevronLeft className="h-4 w-4" /><span>Réduire</span></>
-          }
-        </button>
-
-        {collapsed ? (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <button
-                  onClick={() => signOut({ callbackUrl: "/login" })}
-                  className="mx-auto flex h-10 w-10 items-center justify-center rounded-2xl text-muted-foreground transition-all hover:bg-muted hover:text-foreground"
-                />
-              }
-            >
-              <LogOut className="h-4 w-4" />
-            </TooltipTrigger>
-            <TooltipContent side="right">Déconnexion</TooltipContent>
-          </Tooltip>
-        ) : (
+          {collapsed ? "—" : fr ? "Espace personnel" : "Workspace"}
+        </p>
+        <nav aria-label={fr ? "Navigation principale" : "Main navigation"} className="space-y-1.5">
+          {NAV_ITEMS.map((item) => navLink(item.href, item.icon, t.nav[item.labelKey]))}
+        </nav>
+        {!collapsed && (
+          <div className="mb-5 mt-auto pt-10">
+            <div className="rounded-2xl border border-primary/10 bg-linear-to-br from-primary/5 to-primary/[0.025] p-4">
+              <Sparkles className="mb-3 size-5 text-primary" />
+              <p className="text-xs font-semibold text-foreground">
+                {fr ? "Un autre regard sur vos actifs" : "A fresh look at your assets"}
+              </p>
+              <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                {fr
+                  ? "Explorez votre portefeuille avec votre assistant IA."
+                  : "Explore your portfolio with your AI assistant."}
+              </p>
+              <Link
+                href="/agent"
+                onClick={onNavigate}
+                className="mt-4 flex items-center justify-between text-xs font-medium text-primary"
+              >
+                {fr ? "Ouvrir l’assistant" : "Open assistant"}
+                <ArrowUpRight className="size-3.5" />
+              </Link>
+            </div>
+          </div>
+        )}
+        <nav aria-label={fr ? "Compte" : "Account"} className="mt-auto space-y-1 border-t py-4">
+          {navLink("/settings", Settings2, t.nav.settings)}
+          {userRole === "admin" && navLink("/admin", ShieldCheck, t.nav.admin)}
           <button
             onClick={() => signOut({ callbackUrl: "/login" })}
-            className="flex h-10 w-full items-center gap-3 rounded-2xl px-3 text-sm text-muted-foreground transition-all hover:bg-muted hover:text-foreground"
+            aria-label={t.auth.logout}
+            title={collapsed ? t.auth.logout : undefined}
+            className={cn(
+              "flex min-h-11 w-full items-center rounded-xl text-[13px] font-medium text-sidebar-foreground transition-colors hover:bg-loss hover:text-loss",
+              collapsed ? "justify-center" : "gap-3 px-3.5"
+            )}
           >
-            <LogOut className="h-4 w-4" />
-            Déconnexion
+            <LogOut className="size-[18px]" strokeWidth={1.7} />
+            {!collapsed && t.auth.logout}
           </button>
-        )}
+        </nav>
       </div>
+      {onToggle && (
+        <div className="border-t p-4">
+          <button
+            onClick={onToggle}
+            aria-label={
+              fr
+                ? collapsed
+                  ? "Développer la navigation"
+                  : "Réduire la navigation"
+                : collapsed
+                  ? "Expand navigation"
+                  : "Collapse navigation"
+            }
+            aria-expanded={!collapsed}
+            className={cn(
+              "flex h-9 w-full items-center rounded-lg text-xs text-muted-foreground hover:bg-muted hover:text-foreground",
+              collapsed ? "justify-center" : "gap-3 px-3.5"
+            )}
+          >
+            {collapsed ? (
+              <PanelLeftOpen className="size-4" />
+            ) : (
+              <>
+                <PanelLeftClose className="size-4" />
+                <span>{fr ? "Réduire le menu" : "Collapse menu"}</span>
+              </>
+            )}
+          </button>
+        </div>
+      )}
     </aside>
   )
 }

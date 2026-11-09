@@ -9,6 +9,7 @@ export interface AgentRequest {
   mode: "portfolio" | "instrument" | "market"
   target?: string   // ticker/ISIN pour mode "instrument"
   userId: string
+  signal?: AbortSignal
   history?: Array<{ role: "user" | "assistant"; content: string }>
 }
 
@@ -52,7 +53,7 @@ Tu peux suggérer des ETFs adaptés à différents profils de risque.`
 
 export async function* runAgentStream(req: AgentRequest): AsyncGenerator<AgentEvent> {
   const executor = createToolExecutor(req.userId)
-  const provider = await getProvider()
+  const provider = await getProvider(req.userId)
 
   const systemPrompt = buildSystemPrompt(req.mode, req.target)
 
@@ -61,5 +62,5 @@ export async function* runAgentStream(req: AgentRequest): AsyncGenerator<AgentEv
     { role: "user", content: req.message },
   ]
 
-  yield* provider.runAgentStream(messages, ALL_TOOL_DEFINITIONS, systemPrompt, executor)
+  yield* provider.runAgentStream(messages, ALL_TOOL_DEFINITIONS, systemPrompt, executor, { signal: req.signal })
 }

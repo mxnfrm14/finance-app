@@ -141,11 +141,11 @@ function parseErrorInfo(raw: string): ErrorInfo {
   if (raw.includes("Aucun provider IA disponible") || raw.includes("provider")) {
     return {
       title: "Aucun provider IA configuré",
-      description: "Aucune clé API n'est configurée. Ajoutez votre clé Anthropic, OpenAI ou configurez une instance Ollama.",
+      description: "Ajoutez votre clé personnelle Anthropic, OpenAI, NVIDIA ou une API compatible dans les paramètres.",
       action: { label: "Configurer dans Paramètres →", href: "/settings" },
     }
   }
-  if (raw.includes("Max iterations")) {
+  if (raw.includes("Max iterations") || raw.includes("Nombre maximal d’appels")) {
     return {
       title: "Limite d'analyse atteinte",
       description: "L'agent a effectué trop d'étapes sans aboutir. Reformulez votre question de façon plus précise.",
@@ -154,7 +154,7 @@ function parseErrorInfo(raw: string): ErrorInfo {
   if (raw.includes("ECONNREFUSED") || raw.includes("fetch failed") || raw.includes("network")) {
     return {
       title: "Impossible de contacter le service IA",
-      description: "Vérifiez votre connexion internet. Si vous utilisez Ollama, assurez-vous que l'instance est démarrée.",
+      description: "Vérifiez la connexion internet du serveur et l’URL de votre fournisseur IA.",
     }
   }
   return {
@@ -455,7 +455,7 @@ export function AgentChat({ initialMode = "portfolio", initialTarget = "" }: Age
   const hasMessages = messages.length > 0
 
   return (
-    <div className="flex flex-col h-full">
+    <div role="main" className="agent-workspace flex h-full min-h-0 flex-col">
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <div className="flex flex-col gap-3 border-b border-border bg-background px-6 py-4">
         <div className="flex items-center justify-between">
@@ -480,7 +480,7 @@ export function AgentChat({ initialMode = "portfolio", initialTarget = "" }: Age
         </div>
 
         {/* Mode selector */}
-        <div className="flex gap-1.5">
+        <div className="flex flex-wrap gap-1.5">
           {(Object.entries(MODE_CONFIG) as [AgentMode, typeof MODE_CONFIG[AgentMode]][]).map(
             ([key, config]) => {
               const Icon = config.icon
@@ -579,6 +579,7 @@ export function AgentChat({ initialMode = "portfolio", initialTarget = "" }: Age
               }
               disabled={isStreaming}
               rows={1}
+              aria-label="Message pour l’assistant IA"
               className={cn(
                 "flex-1 resize-none border-0 bg-transparent p-0 text-sm shadow-none outline-none",
                 "focus-visible:border-0 focus-visible:ring-0 focus-visible:outline-none",
@@ -590,6 +591,7 @@ export function AgentChat({ initialMode = "portfolio", initialTarget = "" }: Age
               onClick={handleSubmit}
               disabled={isStreaming || !input.trim()}
               size="icon-sm"
+              aria-label="Envoyer le message"
               className="shrink-0 mb-0.5"
             >
               {isStreaming ? (

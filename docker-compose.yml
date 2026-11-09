@@ -17,6 +17,18 @@ services:
       retries: 10
     restart: unless-stopped
 
+  migrate:
+    profiles: ["tools"]
+    build:
+      context: .
+      target: migrate
+    environment:
+      DATABASE_URL: postgresql://bourse:${POSTGRES_PASSWORD}@postgres:5432/bourse
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
   app:
     build: .
     container_name: bourse-app
@@ -24,9 +36,8 @@ services:
       DATABASE_URL: postgresql://bourse:${POSTGRES_PASSWORD}@postgres:5432/bourse
       AUTH_SECRET: ${AUTH_SECRET}
       AUTH_URL: ${AUTH_URL}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-}
+      AI_ENCRYPTION_KEY: ${AI_ENCRYPTION_KEY:-}
+      AI_ALLOWED_API_ORIGINS: ${AI_ALLOWED_API_ORIGINS:-}
     depends_on:
       postgres:
         condition: service_healthy

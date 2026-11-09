@@ -6,7 +6,7 @@ Déployée sur Proxmox (VM Ubuntu 24.04) via Docker Compose. 6-20 utilisateurs.
 
 - **Framework** : Next.js 16 App Router, TypeScript strict
 - **BDD** : PostgreSQL 16 via Prisma 7 (Docker en prod, local en dev)
-- **IA** : Multi-provider (Anthropic / OpenAI / NVIDIA NIM / Ollama local) — `lib/ai/providers/`
+- **IA** : Multi-provider (Anthropic / OpenAI / NVIDIA NIM / API compatible OpenAI) — `lib/ai/providers/`
 - **Market data** : yahoo-finance2 v3 (server-side uniquement)
 - **Auth** : NextAuth v5 + `@auth/prisma-adapter` (sessions en DB)
 - **Deploy** : Docker Compose (app + postgres + nginx)
@@ -18,11 +18,9 @@ Déployée sur Proxmox (VM Ubuntu 24.04) via Docker Compose. 6-20 utilisateurs.
 # PostgreSQL local (Docker)
 DATABASE_URL="postgresql://bourse:bourse@localhost:5432/bourse"
 
-# IA — au moins un provider requis
-ANTHROPIC_API_KEY="sk-ant-..."
-OPENAI_API_KEY="sk-..."                   # optionnel
-NVIDIA_API_KEY="nvapi-..."                # optionnel — https://build.nvidia.com
-OLLAMA_BASE_URL="http://localhost:11434"  # optionnel, modèles locaux
+# IA : clés personnelles saisies dans Paramètres
+AI_ENCRYPTION_KEY="<secret aléatoire stable de 32 caractères ou plus>"
+AI_ALLOWED_API_ORIGINS=""
 
 # Auth
 AUTH_SECRET="<openssl rand -base64 32>"
@@ -34,8 +32,8 @@ AUTH_URL="http://localhost:3000"
 DATABASE_URL="postgresql://bourse:<password>@postgres:5432/bourse"
 AUTH_SECRET="<secret long et aléatoire>"
 AUTH_URL="https://bourse.mondomaine.fr"   # ou http://ip-locale:3000
-ANTHROPIC_API_KEY="..."
-NVIDIA_API_KEY="..."                      # optionnel
+AI_ENCRYPTION_KEY="<secret aléatoire stable de 32 caractères ou plus>"
+AI_ALLOWED_API_ORIGINS=""
 ```
 
 ## Commandes courantes
@@ -80,38 +78,15 @@ Proxmox VM (Ubuntu 24.04 LTS — 4 vCPU, 8GB RAM, 80GB SSD)
 
 ## Architecture IA (multi-provider)
 
-```
-lib/ai/
-├── providers/
-│   ├── index.ts        # getProvider() + chaîne de fallback automatique
-│   ├── anthropic.ts    # Anthropic — tool use natif, accepte apiKey en paramètre
-│   ├── openai.ts       # OpenAI — function calling (compatible Ollama + NVIDIA NIM)
-│   └── ollama.ts       # Ollama REST — mode dégradé si no tool support
-├── agent-loop.ts       # Boucle agentic provider-agnostic (AsyncGenerator)
-├── tools/
-│   ├── index.ts                 # Registry + définitions Anthropic + OpenAI
-│   ├── get-stock-price.ts       # yahoo-finance2 quote() + resolveSymbol fallback
-│   ├── get-fundamentals.ts      # yahoo-finance2 quoteSummary() + resolveSymbol fallback
-│   ├── get-historical-prices.ts # yahoo-finance2 historical() + resolveSymbol fallback
-│   ├── search-news.ts           # Yahoo Finance API + SDK fallback
-│   ├── get-portfolio-context.ts # lecture PostgreSQL du portfolio user
-│   ├── search-instrument.ts     # yahoo-finance2 search() — résolution canonique
-│   └── get-etf-holdings.ts      # yahoo-finance2 quoteSummary topHoldings + resolveSymbol
-└── client.ts           # Singleton Anthropic (provider Anthropic seulement)
-```
+Connexions par utilisateur dans `AiConnection`, fournisseur actif dans `User.aiProvider`. `getProvider(userId)` utilise uniquement les identifiants de cet utilisateur. Les secrets sont chiffrés en AES-256-GCM et ne sont jamais renvoyés au navigateur. Aucun fallback global ou clé IA dans l’environnement.
 
-**Providers supportés :**
+- `anthropic.ts` : Messages `/v1/messages`, clé API personnelle.
+- `openai.ts` : Responses `/v1/responses` et Chat Completions `/v1/chat/completions`, streaming et outils.
+- NVIDIA NIM : Chat Completions via cet adaptateur.
+- API compatible : URL et protocole configurables, origines supplémentaires autorisées par l’administrateur.
+- Ollama retiré. Les abonnements ChatGPT/Claude restent non connectés tant que les prérequis fournisseurs pour cette application hébergée ne sont pas satisfaits.
 
-| Provider | Implémentation | Base URL | Config |
-|---|---|---|---|
-| Anthropic (Claude) | `anthropic.ts` | api.anthropic.com | `ANTHROPIC_API_KEY` / DB `anthropic_api_key` |
-| OpenAI | `openai.ts` | api.openai.com | `OPENAI_API_KEY` / DB `openai_api_key` |
-| NVIDIA NIM | `openai.ts` (compat) | `https://integrate.api.nvidia.com/v1` | `NVIDIA_API_KEY` / DB `nvidia_api_key` |
-| Ollama | `openai.ts` (compat) | `http://localhost:11434/v1` | `OLLAMA_BASE_URL` / DB `ollama_base_url` |
-
-**Fallback automatique** : provider configuré → Anthropic → OpenAI → NVIDIA → Ollama.
-**Config en DB** (`AppConfig`) : la clé API peut être stockée via `POST /api/settings/ai` — prioritaire sur les env vars.
-**Ollama tool use** : llama3.1, mistral-nemo, qwen2.5 seulement. Sinon mode dégradé.
+Voir `docs/AI_INTEGRATIONS.md` pour la migration, le chiffrement, les tests et les sources officielles.
 
 ## Auth — NextAuth v5 + Prisma Adapter
 - Sessions stockées en DB PostgreSQL (table `Session`)
@@ -288,10 +263,9 @@ bourse/
 ├── lib/
 │   ├── ai/
 │   │   ├── providers/
-│   │   │   ├── index.ts               # getProvider() + fallback chain
+│   │   │   ├── index.ts               # getProvider(userId) : connexion personnelle
 │   │   │   ├── anthropic.ts           # accepte apiKey en constructeur
-│   │   │   ├── openai.ts              # compatible OpenAI + NVIDIA + Ollama
-│   │   │   └── ollama.ts
+│   │   │   ├── openai.ts              # Responses + Chat Completions + NVIDIA
 │   │   ├── agent-loop.ts              # buildSystemPrompt() + runAgentStream()
 │   │   ├── tools/                     # 7 outils avec fallbacks
 │   │   └── client.ts
@@ -328,7 +302,7 @@ bourse/
 - **Tickers Yahoo Finance** : toujours utiliser le symbole canonique avec suffixe exchange (`CW8.PA`, `TTE.PA`). `resolveSymbol()` gère la résolution automatique dans les outils.
 - **`proxy.ts`** (pas `middleware.ts`) : Next.js 16 + edge runtime exige `export default function proxy()`. Utilise `getToken` de `next-auth/jwt` (sans bcrypt = compatible edge). `auth.config.ts` est le pendant léger pour l'edge.
 - **Pas de `SessionProvider`** : utiliser le pattern server component → props scalaires vers client component. `useSession()` lèvera une erreur sans `SessionProvider`.
-- **Config IA en DB** : les clés API stockées dans `AppConfig` via `/api/settings/ai` sont prioritaires sur les variables d'environnement. La clé Anthropic est stockée sous `anthropic_api_key`, NVIDIA sous `nvidia_api_key`.
+- **Config IA en DB** : `AiConnection` est isolée par utilisateur et fournisseur. Les anciennes clés globales `AppConfig` ne sont plus utilisées.
 - Prisma migrations : `migrate dev` en dev, `migrate deploy` en prod (dans le Dockerfile)
 - NextAuth v5 + Prisma adapter : le schema Prisma doit inclure les modèles `Account`, `Session`, `VerificationToken`
 - Docker : `app` doit attendre que `postgres` soit healthy (`depends_on` avec `condition: service_healthy`)

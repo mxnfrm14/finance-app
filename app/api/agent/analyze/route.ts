@@ -31,16 +31,22 @@ export async function POST(req: Request) {
   const stream = new ReadableStream({
     async start(controller) {
       const fullText: string[] = []
+      let completed = false
+      let failed = false
 
       function send(event: object) {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`))
       }
 
       try {
-        for await (const event of runAgentStream({ message, mode, target, userId, history })) {
+        for await (const event of runAgentStream({ message, mode, target, userId, history, signal: req.signal })) {
           send(event)
           if (event.type === "text" && event.text) fullText.push(event.text)
+          if (event.type === "done") completed = true
+          if (event.type === "error") failed = true
         }
+
+        if (!completed || failed || req.signal.aborted) return
 
         // Persister la session agent en DB
         const assistantContent = fullText.join("")
@@ -51,8 +57,8 @@ export async function POST(req: Request) {
         ]
 
         if (sessionId) {
-          await prisma.agentSession.update({
-            where: { id: sessionId },
+          await prisma.agentSession.updateMany({
+            where: { id: sessionId, userId },
             data: { messages: JSON.stringify(updatedHistory) },
           }).catch(() => {/* ignore if session doesn't exist */})
         } else {

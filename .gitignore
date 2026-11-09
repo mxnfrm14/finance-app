@@ -29,8 +29,13 @@ Thumbs.db
 
 # test / coverage
 coverage/
-tsconfig.tsbuildinfo
 
 # docker
 docker-data/
 postgres-data/
+
+# Local migration backups and generated files
+.local-backups/
+*.tsbuildinfo
+
+/graphify-out

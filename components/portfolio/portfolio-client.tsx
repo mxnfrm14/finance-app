@@ -242,7 +242,7 @@ function TransactionRow({ tx, multiAccount, onDeleted }: TransactionRowProps) {
       <Button
         variant="ghost"
         size="icon-sm"
-        className="opacity-0 group-hover:opacity-100 text-destructive hover:text-destructive shrink-0"
+        className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 text-destructive hover:text-destructive shrink-0"
         onClick={handleDelete}
         disabled={deleting}
       >
@@ -281,32 +281,24 @@ function ISINRow({ group, onRefresh }: ISINRowProps) {
       {/* ── Main row ── */}
       <div
         className={cn(
-          "flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-muted/30 transition-colors",
+          "flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors",
           expanded && "bg-muted/20"
         )}
-        onClick={() => setExpanded((v) => !v)}
-        role="button"
-        tabIndex={0}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault()
-            setExpanded((v) => !v)
-          }
-        }}
       >
-        {/* Chevron */}
-        <span className="text-muted-foreground shrink-0">
-          {expanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
-        </span>
-
-        {/* Identité */}
-        <div className="flex-1 min-w-0">
-          <p className="font-medium truncate">{group.name}</p>
-          <p className="text-xs text-muted-foreground font-mono">
-            {group.isin}
-            {group.ticker && <span className="ml-2 opacity-70">{group.ticker}</span>}
-          </p>
-        </div>
+        <button type="button" onClick={() => setExpanded((value) => !value)} aria-expanded={expanded}
+          aria-label={`${expanded ? "Masquer" : "Afficher"} les transactions de ${group.name}`}
+          className="flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-lg text-left">
+          <span className="shrink-0 text-muted-foreground">
+            {expanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate font-medium">{group.name}</span>
+            <span className="block truncate font-mono text-xs text-muted-foreground">
+              {group.isin}
+              {group.ticker && <span className="ml-2">{group.ticker}</span>}
+            </span>
+          </span>
+        </button>
 
         {/* Type d'actif */}
         <div className="hidden sm:block w-24 shrink-0">
@@ -403,13 +395,13 @@ function ISINRow({ group, onRefresh }: ISINRowProps) {
 
       {/* ── Dropdown transactions ── */}
       {expanded && (
-        <div className="bg-muted/10 border-t">
+        <div className="overflow-x-auto bg-muted/10 border-t">
           {group.transactions.length === 0 ? (
             <p className="px-4 py-3 text-sm text-muted-foreground italic">
               Aucune transaction enregistrée.
             </p>
           ) : (
-            <div className="px-2 pb-2">
+            <div className="min-w-[800px] px-2 pb-2">
               {/* En-tête colonnes */}
               <div className="flex items-center gap-3 py-2 px-3 text-xs font-medium text-muted-foreground uppercase tracking-wide border-b border-muted/40">
                 <span className="w-24 shrink-0">Date</span>
@@ -523,9 +515,9 @@ export function PortfolioClient() {
   const totalTx = isinGroups.reduce((s, g) => s + g.transactions.length, 0)
 
   return (
-    <div className="flex flex-col gap-6 p-6">
+    <div role="main" className="flex flex-col gap-6 p-6">
       {/* En-tête */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold">{t.portfolio.title}</h1>
           <p className="text-sm text-muted-foreground mt-0.5">

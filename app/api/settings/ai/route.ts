@@ -1,83 +1,41 @@
 import { auth } from "@/auth"
 import { NextResponse } from "next/server"
-import { prisma } from "@/lib/db/client"
+import { aiConfigSchema, PROVIDERS } from "@/lib/ai/config"
 import { z } from "zod"
-
-const schema = z.object({
-  provider: z.enum(["anthropic", "openai", "nvidia", "ollama"]),
-  model: z.string().optional(),
-  apiKey: z.string().optional(),
-  baseUrl: z.string().optional(),
-})
+import { aiSettings } from "@/lib/ai/settings"
 
 export async function POST(req: Request) {
   const session = await auth()
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-
-  const body = await req.json().catch(() => null)
-  const parsed = schema.safeParse(body)
-  if (!parsed.success) return NextResponse.json({ error: "Données invalides" }, { status: 400 })
-
-  const { provider, model, apiKey, baseUrl } = parsed.data
-
-  const upserts: Promise<unknown>[] = [
-    prisma.appConfig.upsert({
-      where: { key: "ai_provider" },
-      update: { value: provider },
-      create: { key: "ai_provider", value: provider },
-    }),
-  ]
-
-  if (model) {
-    const modelKey =
-      provider === "anthropic" ? "ai_model"
-      : provider === "openai" ? "openai_model"
-      : provider === "nvidia" ? "nvidia_model"
-      : "ollama_model"
-    upserts.push(
-      prisma.appConfig.upsert({
-        where: { key: modelKey },
-        update: { value: model },
-        create: { key: modelKey, value: model },
-      })
-    )
+  const parsed = aiConfigSchema.safeParse(await req.json().catch(() => null))
+  if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Données invalides" }, { status: 400 })
+  try {
+    return NextResponse.json(await aiSettings.save(session.user.id, parsed.data), { headers: { "Cache-Control": "no-store" } })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : ""
+    const known = /^(Configurez AI_ENCRYPTION_KEY|La clé IA|Renseignez à nouveau|URL de l|L’URL doit|Ce serveur IA)/.test(message)
+    return NextResponse.json({ error: known ? message : "Impossible d’enregistrer la connexion IA. Vérifiez la configuration du serveur." }, { status: 400 })
   }
-
-  if (apiKey) {
-    const keyName =
-      provider === "anthropic" ? "anthropic_api_key"
-      : provider === "nvidia" ? "nvidia_api_key"
-      : "openai_api_key"
-    upserts.push(
-      prisma.appConfig.upsert({
-        where: { key: keyName },
-        update: { value: apiKey },
-        create: { key: keyName, value: apiKey },
-      })
-    )
-  }
-
-  if (baseUrl && provider === "ollama") {
-    upserts.push(
-      prisma.appConfig.upsert({
-        where: { key: "ollama_base_url" },
-        update: { value: baseUrl },
-        create: { key: "ollama_base_url", value: baseUrl },
-      })
-    )
-  }
-
-  await Promise.all(upserts)
-  return NextResponse.json({ ok: true })
 }
 
 export async function GET() {
   const session = await auth()
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  try {
+    return NextResponse.json(await aiSettings.read(session.user.id), { headers: { "Cache-Control": "no-store" } })
+  } catch {
+    return NextResponse.json({ error: "Impossible de charger les connexions IA. Vérifiez que les migrations sont appliquées." }, { status: 503 })
+  }
+}
 
-  const rows = await prisma.appConfig.findMany({
-    where: { key: { in: ["ai_provider", "ai_model", "openai_model", "nvidia_model", "ollama_model", "ollama_base_url"] } },
-  })
-  const cfg = Object.fromEntries(rows.map((r) => [r.key, r.value]))
-  return NextResponse.json(cfg)
+export async function DELETE(req: Request) {
+  const session = await auth()
+  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const parsed = z.object({ provider: z.enum(PROVIDERS) }).safeParse(await req.json().catch(() => null))
+  if (!parsed.success) return NextResponse.json({ error: "Fournisseur invalide." }, { status: 400 })
+  try {
+    return NextResponse.json(await aiSettings.remove(session.user.id, parsed.data.provider), { headers: { "Cache-Control": "no-store" } })
+  } catch {
+    return NextResponse.json({ error: "Impossible de supprimer la connexion IA." }, { status: 500 })
+  }
 }

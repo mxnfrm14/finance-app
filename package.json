@@ -7,6 +7,8 @@
     "build": "next build",
     "start": "next start",
     "type-check": "tsc --noEmit",
+    "test:auth": "tsx --test tests/proxy-session.test.ts",
+    "test:ai": "tsx --test tests/ai-integrations.test.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
