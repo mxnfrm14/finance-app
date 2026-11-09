@@ -229,15 +229,21 @@ model AgentSession {
   id           String   @id @default(cuid())
   userId       String
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  mode         String // "portfolio" | "instrument" | "market"
+  mode         String // "chat"; legacy: "portfolio" | "instrument" | "market"
   target       String? // ticker/ISIN pour mode instrument
   messages     String // JSON : Array<{role, content}> — historique complet
   riskScore    Int?
   modelVersion String   @default("claude-opus-4-6")
   createdAt    DateTime @default(now())
+  title        String   @default("Conversation")
+  updatedAt    DateTime @default(now()) @updatedAt
+  revision     Int      @default(0)
+  activeRunId  String?
+  runExpiresAt DateTime?
 
   @@index([userId])
   @@index([createdAt])
+  @@index([userId, updatedAt, id])
 }
 
 // ─── Config app ───────────────────────────────────────────────────────────────

@@ -1,611 +1,270 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
-import { useRouter } from "next/navigation"
-import { Bot, TrendingUp, BarChart3, Send, Loader2, Zap, AlertCircle } from "lucide-react"
-
+import { useEffect, useRef, useState } from "react"
+import Link from "next/link"
+import { usePathname, useRouter } from "next/navigation"
+import { Bot, BriefcaseBusiness, Search, Sparkles, Send, Loader2, PanelLeftClose, PanelLeftOpen, Plus, Trash2, X, MessageSquare } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
+import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
+import { useAgent } from "./agent-provider"
+import { MessageMarkdown } from "./message-markdown"
+import type { ChatAction, ConversationSummary } from "@/lib/ai/conversations"
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-type AgentMode = "portfolio" | "instrument" | "market"
-
-type Message = {
-  role: "user" | "assistant"
-  content: string
-  isError?: boolean
-}
-
-type SSEEvent =
-  | { type: "text"; text: string }
-  | { type: "tool_start"; toolName: string; input: unknown }
-  | { type: "tool_result"; toolName: string; result: unknown }
-  | { type: "done" }
-  | { type: "error"; error: string }
-
-// ─── Constants ────────────────────────────────────────────────────────────────
-
-const TOOL_DISPLAY_NAMES: Record<string, string> = {
-  get_stock_price: "cours de l'action",
-  get_fundamentals: "données fondamentales",
-  get_historical_prices: "historique des cours",
-  search_news: "actualités",
-  get_portfolio_context: "portfolio",
-  search_instrument: "instrument",
-  get_etf_holdings: "composition ETF",
-}
-
-const MODE_CONFIG: Record<
-  AgentMode,
-  { icon: React.ElementType; label: string; description: string }
-> = {
-  portfolio: {
-    icon: Bot,
-    label: "Portfolio",
-    description: "Analyser mon portfolio",
-  },
-  instrument: {
-    icon: TrendingUp,
-    label: "Instrument",
-    description: "Analyser un instrument",
-  },
-  market: {
-    icon: BarChart3,
-    label: "Marché",
-    description: "Vue du marché",
-  },
-}
-
-const QUICK_PROMPTS: Record<AgentMode, { text: string; prompt: string }[]> = {
-  portfolio: [
-    { text: "Analyse mon portfolio", prompt: "Analyse mon portfolio et donne-moi tes recommandations." },
-    { text: "Risques actuels", prompt: "Quels sont les principaux risques dans mon portfolio en ce moment ?" },
-    { text: "Rééquilibrage", prompt: "Mon portfolio est-il bien équilibré ? Que changerais-tu ?" },
-  ],
-  instrument: [
-    { text: "Analyse LVMH (MC.PA)", prompt: "Analyse LVMH (MC.PA) : cours, fondamentaux et perspectives." },
-    { text: "Analyse MSCI World", prompt: "Donne-moi une analyse de l'ETF MSCI World (CW8)." },
-    { text: "Analyse TotalEnergies", prompt: "Analyse TotalEnergies (TTE.PA) avec les dernières actualités." },
-  ],
-  market: [
-    { text: "Quels ETF monde recommandes-tu ?", prompt: "Quels ETF monde recommandes-tu pour un investisseur long terme PEA ?" },
-    { text: "Contexte macro actuel", prompt: "Quel est le contexte macro actuel et comment positionner son portfolio ?" },
-    { text: "Secteurs porteurs", prompt: "Quels secteurs sont les plus porteurs en ce moment ?" },
-  ],
-}
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-const THINKING_MESSAGES = [
-  "Réflexion en cours",
-  "Analyse des données",
-  "Consultation des sources",
-  "Traitement de la requête",
+const PORTFOLIO_PROMPT = "Analyse mon portfolio et donne-moi tes recommandations."
+const PROMPTS = [
+  { title: "Mon portfolio", items: [
+    ["Analyse complète", PORTFOLIO_PROMPT],
+    ["Risques actuels", "Quels sont les principaux risques dans mon portfolio en ce moment ?"],
+    ["Rééquilibrage", "Mon portfolio est-il bien équilibré ? Que changerais-tu ?"],
+  ] },
+  { title: "Une valeur", items: [
+    ["LVMH", "Analyse LVMH (MC.PA) : cours, fondamentaux et perspectives."],
+    ["MSCI World", "Donne-moi une analyse de l’ETF MSCI World (CW8)."],
+    ["TotalEnergies", "Analyse TotalEnergies (TTE.PA) avec les dernières actualités."],
+  ] },
+  { title: "Les marchés", items: [
+    ["ETF monde", "Quels ETF monde recommandes-tu pour un investisseur long terme PEA ?"],
+    ["Contexte macro", "Quel est le contexte macro actuel et comment positionner son portfolio ?"],
+    ["Secteurs porteurs", "Quels secteurs sont les plus porteurs en ce moment ?"],
+  ] },
 ]
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
-
-function ThinkingPill({ currentTool }: { currentTool: string | null }) {
-  const [msgIdx, setMsgIdx] = useState(0)
-  const [dots, setDots] = useState(".")
-
-  useEffect(() => {
-    const msgTimer = setInterval(() => setMsgIdx((i) => (i + 1) % THINKING_MESSAGES.length), 2000)
-    const dotTimer = setInterval(() => setDots((d) => (d.length >= 3 ? "." : d + ".")), 450)
-    return () => { clearInterval(msgTimer); clearInterval(dotTimer) }
-  }, [])
-
-  const label = currentTool
-    ? `Récupération ${TOOL_DISPLAY_NAMES[currentTool] ?? currentTool.replace(/_/g, " ")}`
-    : THINKING_MESSAGES[msgIdx]
-
-  return (
-    <div className="flex items-start gap-3">
-      <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/10 mt-0.5">
-        <Bot className="size-3.5 text-primary" />
-      </div>
-      <div className="flex items-center gap-1.5 rounded-full border border-border bg-muted px-3 py-1.5 text-xs text-muted-foreground">
-        <Loader2 className="size-3 animate-spin shrink-0" />
-        <span className="tabular-nums">{label}<span className="opacity-60">{dots}</span></span>
-      </div>
-    </div>
-  )
+const TOOL_NAMES: Record<string, string> = {
+  get_stock_price: "Consultation des cours", get_fundamentals: "Analyse des fondamentaux",
+  get_historical_prices: "Consultation de l’historique des cours", search_news: "Recherche d’actualités",
+  get_portfolio_context: "Consultation du portfolio", search_instrument: "Recherche de la valeur",
+  get_etf_holdings: "Analyse de la composition de l’ETF",
 }
-
-// ─── Error parsing ────────────────────────────────────────────────────────────
-
-interface ErrorInfo {
-  title: string
-  description: string
-  action?: { label: string; href: string }
-}
-
-function parseErrorInfo(raw: string): ErrorInfo {
-  if (raw === "AUTH_ERROR" || raw.includes("authentication_error") || raw.includes("invalid x-api-key") || raw.includes("401")) {
-    return {
-      title: "Clé API invalide",
-      description: "La clé API configurée est invalide ou expirée. Vérifiez qu'elle est correcte et qu'elle dispose des droits nécessaires.",
-      action: { label: "Configurer dans Paramètres →", href: "/settings" },
-    }
-  }
-  if (raw === "RATE_LIMIT" || raw.includes("rate_limit") || raw.includes("429")) {
-    return {
-      title: "Limite de requêtes atteinte",
-      description: "Trop de requêtes envoyées au service IA. Attendez quelques secondes puis réessayez.",
-    }
-  }
-  if (raw.includes("Aucun provider IA disponible") || raw.includes("provider")) {
-    return {
-      title: "Aucun provider IA configuré",
-      description: "Ajoutez votre clé personnelle Anthropic, OpenAI, NVIDIA ou une API compatible dans les paramètres.",
-      action: { label: "Configurer dans Paramètres →", href: "/settings" },
-    }
-  }
-  if (raw.includes("Max iterations") || raw.includes("Nombre maximal d’appels")) {
-    return {
-      title: "Limite d'analyse atteinte",
-      description: "L'agent a effectué trop d'étapes sans aboutir. Reformulez votre question de façon plus précise.",
-    }
-  }
-  if (raw.includes("ECONNREFUSED") || raw.includes("fetch failed") || raw.includes("network")) {
-    return {
-      title: "Impossible de contacter le service IA",
-      description: "Vérifiez la connexion internet du serveur et l’URL de votre fournisseur IA.",
-    }
-  }
-  return {
-    title: "Erreur inattendue",
-    description: "Une erreur est survenue lors de l'analyse. Réessayez ou contactez l'administrateur si le problème persiste.",
-  }
-}
-
-function ErrorMessage({ content }: { content: string }) {
-  const router = useRouter()
-  const { title, description, action } = parseErrorInfo(content)
-
-  return (
-    <div className="flex items-start gap-3">
-      <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-destructive/10 mt-0.5">
-        <AlertCircle className="size-3.5 text-destructive" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="rounded-2xl rounded-tl-sm bg-destructive/5 ring-1 ring-destructive/20 px-4 py-3 shadow-sm space-y-1">
-          <p className="text-sm font-medium text-destructive">{title}</p>
-          <p className="text-sm text-muted-foreground">{description}</p>
-          {action && (
-            <button
-              onClick={() => router.push(action.href)}
-              className="text-xs text-primary hover:underline underline-offset-2 mt-1 block"
-            >
-              {action.label}
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function UserMessage({ content }: { content: string }) {
-  return (
-    <div className="flex justify-end">
-      <div className="max-w-[75%] rounded-2xl rounded-tr-sm bg-primary px-4 py-2.5 text-sm text-primary-foreground shadow-sm">
-        <p className="whitespace-pre-wrap leading-relaxed">{content}</p>
-      </div>
-    </div>
-  )
-}
-
-function AssistantMessage({
-  content,
-  isStreaming,
-  currentTool,
-}: {
-  content: string
-  isStreaming?: boolean
-  currentTool?: string | null
-}) {
-  // Pas encore de texte → pastille animée uniquement
-  if (isStreaming && !content) {
-    return <ThinkingPill currentTool={currentTool ?? null} />
-  }
-
-  return (
-    <div className="flex items-start gap-3">
-      <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/10 mt-0.5">
-        <Bot className="size-3.5 text-primary" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="rounded-2xl rounded-tl-sm bg-card ring-1 ring-foreground/10 px-4 py-2.5 shadow-sm">
-          <p className="text-sm leading-relaxed whitespace-pre-wrap text-card-foreground">
-            {content}
-            {isStreaming && (
-              <span className="inline-block w-0.5 h-4 bg-primary ml-0.5 animate-pulse align-middle" />
-            )}
-          </p>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function EmptyState({
-  mode,
-  onQuickPrompt,
-}: {
-  mode: AgentMode
-  onQuickPrompt: (prompt: string) => void
-}) {
-  const config = MODE_CONFIG[mode]
-  const prompts = QUICK_PROMPTS[mode]
-
-  return (
-    <div className="flex flex-col items-center justify-center h-full gap-6 px-6 text-center">
-      <div className="flex size-14 items-center justify-center rounded-2xl bg-primary/10">
-        <config.icon className="size-7 text-primary" />
-      </div>
-      <div className="space-y-1.5">
-        <h2 className="text-base font-semibold text-foreground">Agent IA — {config.description}</h2>
-        <p className="text-sm text-muted-foreground max-w-sm">
-          {mode === "portfolio" && "Posez une question sur votre portefeuille ou demandez une analyse complète."}
-          {mode === "instrument" && "Entrez un ticker ou ISIN, puis posez votre question sur l'instrument."}
-          {mode === "market" && "Interrogez l'agent sur les tendances du marché, les ETF et le contexte macro."}
-        </p>
-      </div>
-      <div className="flex flex-col gap-2 w-full max-w-sm">
-        {prompts.map(({ text, prompt }) => (
-          <button
-            key={text}
-            onClick={() => onQuickPrompt(prompt)}
-            className="flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm text-foreground hover:bg-muted transition-colors text-left shadow-sm"
-          >
-            <Zap className="size-3.5 text-muted-foreground shrink-0" />
-            {text}
-          </button>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-// ─── Main component ───────────────────────────────────────────────────────────
 
 interface AgentChatProps {
-  initialMode?: AgentMode
+  sessionId?: string
+  initialMode?: "portfolio" | "instrument" | "market"
   initialTarget?: string
 }
 
-export function AgentChat({ initialMode = "portfolio", initialTarget = "" }: AgentChatProps) {
-  const [mode, setMode] = useState<AgentMode>(initialMode)
-  const [target, setTarget] = useState(initialTarget)
+export function AgentChat({ sessionId, initialMode, initialTarget = "" }: AgentChatProps) {
+  const { entries, summaries, nextCursor, historyError, refresh, load, remove, start } = useAgent()
+  const router = useRouter()
+  const pathname = usePathname()
+  const [localKey, setLocalKey] = useState<string | null>(null)
   const [input, setInput] = useState("")
-  const [messages, setMessages] = useState<Message[]>([])
-  const [isStreaming, setIsStreaming] = useState(false)
-  const [currentTool, setCurrentTool] = useState<string | null>(null)
-
+  const [action, setAction] = useState<ChatAction>()
+  const [target, setTarget] = useState("")
+  const [panel, setPanel] = useState<"instrument" | "quick" | null>(null)
+  const [collapsed, setCollapsed] = useState(false)
+  const [mobileOpen, setMobileOpen] = useState(false)
+  const [loading, setLoading] = useState(!!sessionId)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [deleting, setDeleting] = useState<ConversationSummary | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [deleteBusy, setDeleteBusy] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const nearBottom = useRef(true)
+  const pendingNavigation = useRef<{ key: string; href: string } | null>(null)
 
-  // ── Auto-scroll to bottom ───────────────────────────────────────────────────
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-    }
-  }, [messages, currentTool])
-
-  // ── Reset on mode change ────────────────────────────────────────────────────
-  useEffect(() => {
-    setCurrentTool(null)
-  }, [mode])
-
-  // ── Send message ────────────────────────────────────────────────────────────
-  const sendMessage = useCallback(
-    async (messageText: string) => {
-      const trimmed = messageText.trim()
-      if (!trimmed || isStreaming) return
-
-      const userMessage: Message = { role: "user", content: trimmed }
-
-      // Build history (last 10 exchanges = 20 messages, excluding current)
-      const historyMessages = messages.slice(-20).map((m) => ({
-        role: m.role,
-        content: m.content,
-      }))
-
-      setMessages((prev) => [...prev, userMessage])
-      setInput("")
-      setIsStreaming(true)
-      setCurrentTool(null)
-
-      // Placeholder message vide — la pastille s'affiche tant que content === ""
-      setMessages((prev) => [...prev, { role: "assistant", content: "" }])
-
-      try {
-        const payload = {
-          message: trimmed,
-          mode,
-          ...(mode === "instrument" && target.trim() ? { target: target.trim() } : {}),
-          history: historyMessages,
-        }
-
-        const res = await fetch("/api/agent/analyze", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        })
-
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}`)
-        }
-
-        const reader = res.body!.getReader()
-        const decoder = new TextDecoder()
-        let buffer = ""
-        let assistantContent = ""
-
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-
-          buffer += decoder.decode(value, { stream: true })
-          const lines = buffer.split("\n")
-          buffer = lines.pop() ?? ""
-
-          for (const line of lines) {
-            const trimmedLine = line.trim()
-            if (!trimmedLine.startsWith("data:")) continue
-            const jsonStr = trimmedLine.slice(5).trim()
-            if (!jsonStr) continue
-
-            let event: SSEEvent
-            try { event = JSON.parse(jsonStr) } catch { continue }
-
-            if (event.type === "text") {
-              assistantContent += event.text
-              setCurrentTool(null) // le texte démarre → cacher la pastille
-              setMessages((prev) => {
-                const updated = [...prev]
-                const last = updated[updated.length - 1]
-                if (last?.role === "assistant") {
-                  updated[updated.length - 1] = { ...last, content: assistantContent }
-                }
-                return updated
-              })
-            } else if (event.type === "tool_start") {
-              setCurrentTool(event.toolName) // met à jour le texte de la pastille
-            } else if (event.type === "tool_result") {
-              setCurrentTool(null) // outil terminé → retour texte générique
-            } else if (event.type === "done") {
-              break
-            } else if (event.type === "error") {
-              throw new Error(event.error)
-            }
-          }
-        }
-
-        // Flush any remaining buffer content
-        if (buffer.trim().startsWith("data:")) {
-          const jsonStr = buffer.trim().slice(5).trim()
-          if (jsonStr) {
-            try {
-              const event: SSEEvent = JSON.parse(jsonStr)
-              if (event.type === "text") {
-                assistantContent += event.text
-                setMessages((prev) => {
-                  const updated = [...prev]
-                  const last = updated[updated.length - 1]
-                  if (last?.role === "assistant") {
-                    updated[updated.length - 1] = { ...last, content: assistantContent }
-                  }
-                  return updated
-                })
-              }
-            } catch {
-              // ignore
-            }
-          }
-        }
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : "Erreur inconnue"
-        setMessages((prev) => {
-          const updated = [...prev]
-          const last = updated[updated.length - 1]
-          if (last?.role === "assistant") {
-            updated[updated.length - 1] = {
-              ...last,
-              content: errorMessage,
-              isError: true,
-            }
-          }
-          return updated
-        })
-      } finally {
-        setIsStreaming(false)
-        setCurrentTool(null)
-        textareaRef.current?.focus()
-      }
-    },
-    [isStreaming, messages, mode, target]
-  )
-
-  const handleSubmit = () => sendMessage(input)
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault()
-      handleSubmit()
-    }
-  }
-
-  const handleModeChange = (newMode: AgentMode) => {
-    setMode(newMode)
-    setMessages([])
-    setCurrentTool(null)
-    setInput("")
-  }
-
-  const handleQuickPrompt = (prompt: string) => {
-    sendMessage(prompt)
-  }
-
+  const entry = localKey ? entries[localKey] : Object.values(entries).find((item) => item.conversation.id === sessionId)
+  const conversation = entry?.conversation
+  const messages = conversation?.messages ?? []
   const hasMessages = messages.length > 0
+  const busy = !!entry?.pending || !!conversation?.running
+  const selectedId = conversation?.id.startsWith("draft:") ? undefined : conversation?.id ?? sessionId
 
-  return (
-    <div role="main" className="agent-workspace flex h-full min-h-0 flex-col">
-      {/* ── Header ─────────────────────────────────────────────────────────── */}
-      <div className="flex flex-col gap-3 border-b border-border bg-background px-6 py-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10">
-              <Bot className="size-4 text-primary" />
-            </div>
-            <div>
-              <h1 className="text-sm font-semibold text-foreground leading-tight">Agent IA</h1>
-              <p className="text-xs text-muted-foreground leading-tight">Analyse financière</p>
-            </div>
-          </div>
+  useEffect(() => {
+    try { setCollapsed(localStorage.getItem("agent-history-collapsed") === "true") } catch { /* optional preference */ }
+  }, [])
 
-          {hasMessages && (
-            <button
-              onClick={() => setMessages([])}
-              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Nouvelle conversation
-            </button>
-          )}
-        </div>
+  useEffect(() => {
+    if (pathname !== "/agent") return
+    setLocalKey(null)
+    setInput(!sessionId && initialMode === "portfolio" ? PORTFOLIO_PROMPT
+      : !sessionId && initialMode === "instrument" && initialTarget ? `Analyse ${initialTarget} : cours, fondamentaux et perspectives.` : "")
+    setAction(!sessionId && initialMode === "portfolio" ? { mode: "portfolio" }
+      : !sessionId && initialMode === "instrument" && initialTarget ? { mode: "instrument", target: initialTarget } : undefined)
+    setTarget(initialTarget)
+    setPanel(!sessionId && initialMode === "instrument" && !initialTarget ? "instrument" : null)
+    setLoadError(null)
+    nearBottom.current = true
+  }, [sessionId, initialMode, initialTarget, pathname])
 
-        {/* Mode selector */}
-        <div className="flex flex-wrap gap-1.5">
-          {(Object.entries(MODE_CONFIG) as [AgentMode, typeof MODE_CONFIG[AgentMode]][]).map(
-            ([key, config]) => {
-              const Icon = config.icon
-              const isActive = mode === key
-              return (
-                <button
-                  key={key}
-                  onClick={() => handleModeChange(key)}
-                  className={cn(
-                    "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors border",
-                    isActive
-                      ? "bg-primary text-primary-foreground border-primary shadow-sm"
-                      : "bg-background text-muted-foreground border-border hover:bg-muted hover:text-foreground"
-                  )}
-                >
-                  <Icon className="size-3.5 shrink-0" />
-                  {config.description}
-                </button>
-              )
-            }
-          )}
-        </div>
+  useEffect(() => {
+    let active = true
+    setLoading(!!sessionId)
+    if (sessionId) void load(sessionId).catch((error) => {
+      if (active) setLoadError(error instanceof Error ? error.message : "Conversation indisponible.")
+    }).finally(() => { if (active) setLoading(false) })
+    return () => { active = false }
+  }, [sessionId, load])
 
-        {/* Instrument target input */}
-        {mode === "instrument" && (
-          <div className="flex items-center gap-2">
-            <Input
-              value={target}
-              onChange={(e) => setTarget(e.target.value)}
-              placeholder="Ticker ou ISIN (ex: MC.PA, FR0000131104)"
-              className="h-8 text-sm max-w-xs"
-            />
-            {target && (
-              <Badge variant="secondary" className="text-xs">
-                {target.trim().toUpperCase()}
-              </Badge>
-            )}
-          </div>
-        )}
-      </div>
+  useEffect(() => {
+    void refresh()
+    const timer = setInterval(() => {
+      if (document.visibilityState === "visible") void refresh()
+    }, 10_000)
+    return () => clearInterval(timer)
+  }, [refresh])
 
-      {/* ── Messages ───────────────────────────────────────────────────────── */}
-      <div
-        ref={scrollRef}
-        className="flex-1 overflow-y-auto px-6 py-4"
-      >
-        {!hasMessages ? (
-          <EmptyState mode={mode} onQuickPrompt={handleQuickPrompt} />
-        ) : (
-          <div className="mx-auto max-w-2xl space-y-5">
-            {messages.map((message, index) => {
-              const isLastAssistant =
-                message.role === "assistant" && index === messages.length - 1
+  // A run from another tab (or before a reload) is followed through persisted checkpoints.
+  useEffect(() => {
+    if (!selectedId || !conversation?.running || entry?.pending) return
+    const timer = setInterval(() => { void load(selectedId).catch(() => {}) }, 5000)
+    return () => clearInterval(timer)
+  }, [selectedId, conversation?.running, entry?.pending, load])
 
-              if (message.role === "user") {
-                return <UserMessage key={index} content={message.content} />
-              }
+  useEffect(() => {
+    if (localKey && selectedId && selectedId !== sessionId && pathname === "/agent"
+      && pendingNavigation.current?.key === localKey && pendingNavigation.current.href === window.location.href) {
+      pendingNavigation.current = null
+      router.replace(`/agent?sessionId=${encodeURIComponent(selectedId)}`, { scroll: false })
+    }
+  }, [localKey, selectedId, sessionId, pathname, router])
 
-              if (message.isError) {
-                return <ErrorMessage key={index} content={message.content} />
-              }
+  useEffect(() => {
+    if (nearBottom.current && scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+  }, [messages, entry?.currentTool])
 
-              return (
-                <AssistantMessage
-                  key={index}
-                  content={message.content}
-                  isStreaming={isLastAssistant && isStreaming}
-                  currentTool={isLastAssistant && isStreaming ? currentTool : null}
-                />
-              )
-            })}
-          </div>
-        )}
-      </div>
+  useEffect(() => {
+    if (!textareaRef.current) return
+    textareaRef.current.style.height = "auto"
+    textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 160)}px`
+  }, [input])
 
-      {/* ── Input area ─────────────────────────────────────────────────────── */}
-      <div className="border-t border-border bg-background px-6 py-4">
-        <div className="mx-auto max-w-2xl">
-          <div
-            className={cn(
-              "flex items-end gap-2 rounded-xl border bg-card px-3 py-2 transition-colors shadow-sm",
-              isStreaming ? "border-border" : "border-input focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50"
-            )}
-          >
-            <Textarea
-              ref={textareaRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={
-                mode === "portfolio"
-                  ? "Posez une question sur votre portefeuille..."
-                  : mode === "instrument"
-                  ? "Posez une question sur cet instrument..."
-                  : "Posez une question sur le marché..."
-              }
-              disabled={isStreaming}
-              rows={1}
-              aria-label="Message pour l’assistant IA"
-              className={cn(
-                "flex-1 resize-none border-0 bg-transparent p-0 text-sm shadow-none outline-none",
-                "focus-visible:border-0 focus-visible:ring-0 focus-visible:outline-none",
-                "min-h-[24px] max-h-32 leading-6 placeholder:text-muted-foreground",
-                "disabled:cursor-not-allowed disabled:opacity-50"
-              )}
-            />
-            <Button
-              onClick={handleSubmit}
-              disabled={isStreaming || !input.trim()}
-              size="icon-sm"
-              aria-label="Envoyer le message"
-              className="shrink-0 mb-0.5"
-            >
-              {isStreaming ? (
-                <Loader2 className="size-3.5 animate-spin" />
-              ) : (
-                <Send className="size-3.5" />
-              )}
-            </Button>
-          </div>
-          <p className="mt-2 text-center text-xs text-muted-foreground">
-            Entrée pour envoyer · Maj+Entrée pour un saut de ligne
-          </p>
-        </div>
-      </div>
+  function newChat() {
+    pendingNavigation.current = null
+    setLocalKey(null); setInput(""); setAction(undefined); setPanel(null); setTarget("")
+    setMobileOpen(false); setLoadError(null); setLoading(false)
+    router.push("/agent", { scroll: false })
+  }
+
+  function prepare(prompt: string, nextAction?: ChatAction) {
+    setInput(prompt); setAction(nextAction); setPanel(null)
+    textareaRef.current?.focus()
+  }
+
+  function submit() {
+    if (!input.trim() || busy || loading || loadError) return
+    const key = start(input.trim(), selectedId, action)
+    if (!selectedId) pendingNavigation.current = { key, href: window.location.href }
+    setLocalKey(key); setInput(""); setAction(undefined); setPanel(null)
+    nearBottom.current = true
+  }
+
+  function toggleSidebar() {
+    setCollapsed((previous) => {
+      try { localStorage.setItem("agent-history-collapsed", String(!previous)) } catch { /* optional preference */ }
+      return !previous
+    })
+  }
+
+  async function deleteConversation() {
+    if (!deleting) return
+    setDeleteBusy(true); setDeleteError(null)
+    try {
+      await remove(deleting.id)
+      if (selectedId === deleting.id) newChat()
+      setDeleting(null)
+    } catch (error) { setDeleteError(error instanceof Error ? error.message : "Suppression impossible.") }
+    finally { setDeleteBusy(false) }
+  }
+
+  const history = <div className="flex h-full min-h-0 flex-col gap-4 p-3">
+    <div className="flex items-center justify-between px-1 pt-1">
+      <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Conversations</span>
+      <Button variant="ghost" size="icon-sm" className="hidden lg:inline-flex" onClick={toggleSidebar} aria-label="Replier l’historique"><PanelLeftClose className="size-4" /></Button>
     </div>
-  )
+    <Button variant="outline" className="w-full justify-start gap-2" onClick={newChat}><Plus className="size-4" />Nouveau chat</Button>
+    {historyError && <div role="alert" className="px-2 text-xs text-destructive">{historyError}<button className="mt-1 block underline" onClick={() => void refresh()}>Réessayer</button></div>}
+    <nav aria-label="Historique des conversations" className="min-h-0 flex-1 space-y-1 overflow-y-auto">
+      {!summaries.length && !historyError && <p className="px-2 py-6 text-sm leading-relaxed text-muted-foreground">Vos conversations apparaîtront ici après votre premier message.</p>}
+      {summaries.map((item) => {
+        const live = Object.values(entries).find((value) => value.conversation.id === item.id)
+        const running = live?.pending || item.running
+        return <div key={item.id} className={cn("group flex items-center gap-1 rounded-lg pr-1 hover:bg-muted", selectedId === item.id && "bg-primary/8")}>
+          <Link href={`/agent?sessionId=${encodeURIComponent(item.id)}`} onClick={() => setMobileOpen(false)} aria-current={selectedId === item.id ? "page" : undefined} className="min-w-0 flex-1 rounded-lg px-2.5 py-2.5">
+            <span className="flex items-center gap-2 text-sm">
+              {running ? <Loader2 aria-label="Réponse en cours" className="size-3.5 shrink-0 animate-spin text-primary" /> : <MessageSquare className="size-3.5 shrink-0 text-muted-foreground" />}
+              <span className="truncate">{item.title}</span>
+            </span>
+            <span className="mt-1 block pl-5.5 text-[11px] text-muted-foreground">{running ? "Réponse en cours…" : new Date(item.updatedAt).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}</span>
+          </Link>
+          <Button variant="ghost" size="icon-sm" disabled={!!running} aria-label={`Supprimer ${item.title}`} onClick={() => { setDeleting(item); setDeleteError(null) }} className="shrink-0 text-muted-foreground lg:opacity-0 lg:group-hover:opacity-100 lg:focus-visible:opacity-100"><Trash2 className="size-3.5" /></Button>
+        </div>
+      })}
+      {nextCursor && <Button variant="ghost" className="w-full text-xs" disabled={historyLoading} onClick={async () => { setHistoryLoading(true); await refresh(nextCursor); setHistoryLoading(false) }}>{historyLoading ? "Chargement…" : "Voir plus"}</Button>}
+    </nav>
+  </div>
+
+  const composer = <div className="mx-auto w-full max-w-3xl px-4 pb-4 pt-3 sm:px-6">
+    <div className="mb-3 flex flex-wrap justify-center gap-2">
+      <Button variant="outline" size="sm" disabled={busy} className="rounded-full text-xs" onClick={() => prepare(PORTFOLIO_PROMPT, { mode: "portfolio" })}><BriefcaseBusiness className="size-3.5" />Analyser mon portfolio</Button>
+      <Button variant="outline" size="sm" disabled={busy} className="rounded-full text-xs" aria-expanded={panel === "instrument"} onClick={() => setPanel(panel === "instrument" ? null : "instrument")}><Search className="size-3.5" />Rechercher une valeur</Button>
+      <Button variant="outline" size="sm" disabled={busy} className="rounded-full text-xs" aria-expanded={panel === "quick"} onClick={() => setPanel(panel === "quick" ? null : "quick")}><Sparkles className="size-3.5" />Questions rapides</Button>
+    </div>
+    {panel && <div className="relative mb-3 rounded-xl border bg-card p-4 pr-10 shadow-sm">
+      <Button variant="ghost" size="icon-sm" aria-label="Fermer les suggestions" className="absolute right-1 top-1" onClick={() => setPanel(null)}><X className="size-3.5" /></Button>
+      {panel === "instrument" ? <form className="flex flex-wrap gap-2" onSubmit={(event) => { event.preventDefault(); if (target.trim()) prepare(`Analyse ${target.trim()} : cours, fondamentaux et perspectives.`, { mode: "instrument", target: target.trim() }) }}>
+        <label htmlFor="agent-target" className="w-full text-xs font-medium">Nom, ticker ou ISIN</label>
+        <Input autoFocus id="agent-target" value={target} maxLength={200} onChange={(event) => setTarget(event.target.value)} placeholder="Ex. LVMH, MC.PA, FR0000121014" className="min-w-36 flex-1" />
+        <Button type="submit" variant="secondary" disabled={!target.trim()}>Préparer la question</Button>
+      </form> : <div className="grid gap-4 sm:grid-cols-3">
+        {PROMPTS.map((group) => <div key={group.title}><p className="mb-2 text-xs font-semibold text-muted-foreground">{group.title}</p><div className="flex flex-col gap-1">{group.items.map(([label, prompt]) => <button key={label} onClick={() => prepare(prompt)} className="rounded-md px-2 py-1.5 text-left text-xs hover:bg-muted">{label}</button>)}</div></div>)}
+      </div>}
+    </div>}
+    <form onSubmit={(event) => { event.preventDefault(); submit() }} className="rounded-2xl border border-input bg-card p-3 shadow-sm focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/20">
+      <Textarea ref={textareaRef} value={input} maxLength={4000} rows={2} disabled={busy || loading || !!loadError} aria-label="Message pour l’assistant IA" placeholder="Que souhaitez-vous explorer ?" onChange={(event) => { setInput(event.target.value); setAction(undefined) }}
+        onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); submit() } }}
+        className="max-h-40 min-h-14 resize-none border-0 bg-transparent p-1 text-sm shadow-none focus-visible:ring-0" />
+      <div className="mt-1 flex items-center justify-between gap-2">
+        <span className="text-[11px] text-muted-foreground">{busy ? "Réponse en cours…" : "Entrée pour envoyer · Maj+Entrée pour un saut de ligne"}</span>
+        <Button type="submit" size="icon-sm" disabled={busy || loading || !!loadError || !input.trim()} aria-label="Envoyer le message">{busy ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}</Button>
+      </div>
+    </form>
+  </div>
+
+  return <main className="agent-workspace flex h-full min-h-0 overflow-hidden">
+    {!collapsed && <aside className="hidden w-64 shrink-0 border-r bg-muted/20 lg:block">{history}</aside>}
+    <Dialog open={mobileOpen} onOpenChange={setMobileOpen}>
+      <DialogContent className="inset-y-0 left-0 flex h-dvh w-80 max-w-[88vw] translate-x-0 translate-y-0 flex-col rounded-none p-0 pt-10" aria-describedby={undefined}>
+        <DialogTitle className="sr-only">Historique des conversations</DialogTitle>{history}
+      </DialogContent>
+    </Dialog>
+    <section className="flex min-w-0 flex-1 flex-col">
+      <header className="flex h-16 shrink-0 items-center gap-3 border-b px-4 sm:px-6">
+        <Button variant="ghost" size="icon-sm" className="lg:hidden" aria-label="Ouvrir l’historique" onClick={() => setMobileOpen(true)}><PanelLeftOpen className="size-4" /></Button>
+        {collapsed && <Button variant="ghost" size="icon-sm" className="hidden lg:inline-flex" aria-label="Déplier l’historique" onClick={toggleSidebar}><PanelLeftOpen className="size-4" /></Button>}
+        <Bot className="size-5 shrink-0 text-primary" />
+        <h1 className="min-w-0 flex-1 truncate font-semibold">{hasMessages ? conversation?.title : "Agent IA"}</h1>
+        <Button variant="ghost" size="sm" aria-label="Nouveau chat" onClick={newChat}><Plus className="size-4" /><span className="hidden sm:inline">Nouveau chat</span></Button>
+      </header>
+      {loadError && <div role="alert" className="m-4 rounded-lg border border-destructive/20 p-3 text-sm text-destructive">{loadError}<Button variant="ghost" size="sm" onClick={() => { if (sessionId) { setLoadError(null); setLoading(true); void load(sessionId).catch((error) => setLoadError(error.message)).finally(() => setLoading(false)) } }}>Réessayer</Button></div>}
+      {entry?.error && <div role="alert" className="mx-4 mt-3 rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm">{entry.error}<Link href="/settings" className="ml-2 text-primary underline">Paramètres IA</Link>{entry.retryMessage && <button className="ml-2 text-primary underline" onClick={() => prepare(entry.retryMessage!)}>Remettre la question</button>}</div>}
+      {!hasMessages ? <div className="flex min-h-0 flex-1 flex-col justify-center overflow-y-auto py-6">
+        <div className="px-6 text-center"><div className="mx-auto mb-5 flex size-14 items-center justify-center rounded-2xl bg-primary/10"><Sparkles className="size-7 text-primary" /></div>
+          <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">{loading ? "Chargement de la conversation…" : "Parlons de vos investissements"}</h2>
+          <p className="mb-5 mt-3 text-sm text-muted-foreground">Votre portfolio, une valeur, les marchés. Une seule conversation.</p>
+        </div>{composer}
+      </div> : <>
+        <div ref={scrollRef} onScroll={() => { const node = scrollRef.current; if (node) nearBottom.current = node.scrollHeight - node.scrollTop - node.clientHeight < 100 }} className="min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-6">
+          <div className="mx-auto max-w-3xl space-y-6">{messages.map((message) => <div key={message.id} className={cn("flex gap-3", message.role === "user" && "justify-end")}>
+            {message.role === "assistant" && <div className="mt-1 flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/10"><Bot className="size-4 text-primary" /></div>}
+            <div className={cn("min-w-0 rounded-2xl px-4 py-3 text-sm leading-relaxed", message.role === "user" ? "max-w-[85%] rounded-tr-sm bg-primary text-primary-foreground" : "flex-1 rounded-tl-sm bg-card ring-1 ring-border")}>
+              {message.content && <MessageMarkdown content={message.content} />}
+              {message.status === "streaming" && <p role="status" className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="size-3.5 animate-spin" />{entry?.currentTool ? TOOL_NAMES[entry.currentTool] ?? "Consultation des données" : "Réflexion en cours…"}</p>}
+              {(message.status === "interrupted" || message.status === "failed") && <p className="mt-2 text-xs text-muted-foreground">{message.error ?? (message.status === "failed" ? "La réponse a échoué." : "Réponse interrompue. Le texte enregistré a été conservé.")}</p>}
+            </div>
+          </div>)}</div>
+        </div><div className="shrink-0 border-t bg-background">{composer}</div>
+      </>}
+    </section>
+    <Dialog open={!!deleting} onOpenChange={(open) => { if (!open && !deleteBusy) setDeleting(null) }}>
+      <DialogContent><DialogTitle>Supprimer cette conversation ?</DialogTitle><DialogDescription>« {deleting?.title} » et ses messages seront supprimés définitivement.</DialogDescription>
+        {deleteError && <p role="alert" className="text-sm text-destructive">{deleteError}</p>}
+        <DialogFooter><Button variant="outline" disabled={deleteBusy} onClick={() => setDeleting(null)}>Annuler</Button><Button variant="destructive" disabled={deleteBusy} onClick={() => void deleteConversation()}>{deleteBusy ? "Suppression…" : "Supprimer"}</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+  </main>
 }

@@ -7,6 +7,7 @@ Bourse is a Next.js 16 application for investment tracking and AI-assisted marke
 - Portfolio tracking with positions, transactions, PRU recalculation, and P&L derived from transaction history.
 - Market data lookup powered by Yahoo Finance, including price, fundamentals, news, and instrument search.
 - AI assistant with personal encrypted connections for Anthropic, OpenAI, NVIDIA NIM, and OpenAI-compatible APIs (Responses or Chat Completions).
+- Unified AI chat with account-owned conversation history, portfolio/instrument shortcuts and resumable discussions. Responses continue during navigation within the app; closing or reloading the tab can interrupt generation. Completed exchanges and periodic partial-response checkpoints remain saved.
 - Watchlists, alerts, broker management, analytics, and an admin area.
 - Docker-based deployment for local development and production.
 
@@ -136,6 +137,10 @@ For an existing deployment, back up PostgreSQL before migrations, for example `d
 If you deploy on a LAN server, set `AUTH_URL` to the server IP or hostname, and make sure the database URL points to the internal Postgres service from the app container.
 
 ## Database Commands
+
+The agent history migration adds titles, last-activity timestamps and generation leases to the existing `AgentSession` table. Existing conversations are retained individually. Deploy migrations before starting the updated application. Conversation content is stored as text only; tool result payloads are not retained. History is kept until the user deletes it; the model receives only the last 20 completed, nonempty messages.
+
+Validate the AI integrations and conversation persistence with `npm run test:ai` and `npm run test:agent`. The conversation suite covers ownership checks, concurrent sends, expired generation recovery, full history retention, pagination, database failures and SSE interruptions.
 
 Prisma is the layer that sits between the app and PostgreSQL. In this project it does three main jobs:
 

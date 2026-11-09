@@ -7,7 +7,7 @@ export const metadata: Metadata = {
 }
 
 interface AgentPageProps {
-  searchParams: Promise<{ mode?: string; target?: string }>
+  searchParams: Promise<{ mode?: string; target?: string; sessionId?: string }>
 }
 
 export default async function AgentPage({ searchParams }: AgentPageProps) {
@@ -16,8 +16,8 @@ export default async function AgentPage({ searchParams }: AgentPageProps) {
   const initialMode =
     rawMode === "instrument" || rawMode === "market" || rawMode === "portfolio"
       ? rawMode
-      : "portfolio"
+      : undefined
   const initialTarget = params.target ?? ""
 
-  return <AgentChat initialMode={initialMode} initialTarget={initialTarget} />
+  return <AgentChat sessionId={params.sessionId} initialMode={initialMode} initialTarget={initialTarget} />
 }

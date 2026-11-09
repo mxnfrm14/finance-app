@@ -3,87 +3,33 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 import { runAgentStream } from "@/lib/ai/agent-loop"
 import { prisma } from "@/lib/db/client"
+import { ConversationError, ConversationStore } from "@/lib/ai/conversation-store"
+import { conversationResponse } from "@/lib/ai/conversation-stream"
 
+export const runtime = "nodejs"
 const requestSchema = z.object({
-  message: z.string().min(1).max(4000),
-  mode: z.enum(["portfolio", "instrument", "market"]),
-  target: z.string().optional(),
-  sessionId: z.string().optional(),
-  history: z.array(z.object({
-    role: z.enum(["user", "assistant"]),
-    content: z.string(),
-  })).optional(),
+  message: z.string().trim().min(1).max(4000),
+  mode: z.enum(["chat", "portfolio", "instrument", "market"]).default("chat"),
+  target: z.string().trim().max(200).optional(),
+  sessionId: z.string().min(1).max(200).optional(),
 })
 
 export async function POST(req: Request) {
   const session = await auth()
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-
-  const body = await req.json()
-  const parsed = requestSchema.safeParse(body)
-  if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
-
-  const { message, mode, target, history, sessionId } = parsed.data
+  const parsed = requestSchema.safeParse(await req.json().catch(() => null))
+  if (!parsed.success) return NextResponse.json({ error: "Message invalide (4 000 caractères maximum)." }, { status: 400 })
+  const { message, mode, target, sessionId } = parsed.data
   const userId = session.user.id
-
-  const encoder = new TextEncoder()
-
-  const stream = new ReadableStream({
-    async start(controller) {
-      const fullText: string[] = []
-      let completed = false
-      let failed = false
-
-      function send(event: object) {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`))
-      }
-
-      try {
-        for await (const event of runAgentStream({ message, mode, target, userId, history, signal: req.signal })) {
-          send(event)
-          if (event.type === "text" && event.text) fullText.push(event.text)
-          if (event.type === "done") completed = true
-          if (event.type === "error") failed = true
-        }
-
-        if (!completed || failed || req.signal.aborted) return
-
-        // Persister la session agent en DB
-        const assistantContent = fullText.join("")
-        const updatedHistory = [
-          ...(history ?? []),
-          { role: "user" as const, content: message },
-          { role: "assistant" as const, content: assistantContent },
-        ]
-
-        if (sessionId) {
-          await prisma.agentSession.updateMany({
-            where: { id: sessionId, userId },
-            data: { messages: JSON.stringify(updatedHistory) },
-          }).catch(() => {/* ignore if session doesn't exist */})
-        } else {
-          await prisma.agentSession.create({
-            data: {
-              userId,
-              mode,
-              target,
-              messages: JSON.stringify(updatedHistory),
-            },
-          }).catch(() => {/* ignore DB errors */})
-        }
-      } catch (err) {
-        send({ type: "error", error: err instanceof Error ? err.message : "Erreur inconnue" })
-      } finally {
-        controller.close()
-      }
-    },
-  })
-
-  return new Response(stream, {
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache, no-transform",
-      "X-Accel-Buffering": "no",
-    },
-  })
+  const store = new ConversationStore(prisma)
+  try {
+    const run = await store.begin(userId, message, sessionId)
+    return conversationResponse({
+      store, run, signal: req.signal,
+      generate: (signal) => runAgentStream({ message, mode, target, userId, history: run.history, signal }),
+    })
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof ConversationError ? error.message : "Impossible d’enregistrer le message. Réessayez." },
+      { status: error instanceof ConversationError ? error.status : 503 })
+  }
 }

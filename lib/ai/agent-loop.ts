@@ -6,7 +6,7 @@ export type { AgentEvent }
 
 export interface AgentRequest {
   message: string
-  mode: "portfolio" | "instrument" | "market"
+  mode: "chat" | "portfolio" | "instrument" | "market"
   target?: string   // ticker/ISIN pour mode "instrument"
   userId: string
   signal?: AbortSignal
@@ -16,6 +16,9 @@ export interface AgentRequest {
 function buildSystemPrompt(mode: AgentRequest["mode"], target?: string): string {
   const today = new Date().toLocaleDateString("fr-FR", { dateStyle: "long" })
   const base = `Tu es un analyste financier expert. Aujourd'hui c'est le ${today}. Tu réponds toujours en français.
+La conversation peut passer librement du portefeuille à un instrument ou aux marchés. Réponds à la dernière question, sans rester enfermé dans le thème initial.
+Choisis les outils selon la question : get_portfolio_context pour le portefeuille personnel, search_instrument pour résoudre un nom, ticker ou ISIN, puis cours, fondamentaux, actualités et historique si utiles.
+Ne consulte le portefeuille personnel que si la demande le nécessite. Ne présente jamais les données d'une ancienne réponse comme des cours actuels sans les actualiser.
 Tu as accès à des outils pour récupérer des données de marché en temps réel.
 Tes analyses sont factuelles, nuancées et pédagogiques. Tu mentionnes toujours les risques.
 Tu ne fournis pas de conseils d'investissement personnalisés au sens légal du terme — tu fournis une analyse de marché.
@@ -46,7 +49,7 @@ Conclue avec une recommandation BUY / HOLD / SELL avec score de conviction (1-10
 
   return `${base}
 
-L'utilisateur pose une question sur les marchés financiers en général.
+Réponds à la dernière question en utilisant l'historique pour comprendre les références aux échanges précédents.
 Utilise search_instrument pour trouver les tickers si l'utilisateur mentionne des actifs spécifiques.
 Tu peux suggérer des ETFs adaptés à différents profils de risque.`
 }

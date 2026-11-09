@@ -188,6 +188,69 @@
   font-size: 1rem;
   letter-spacing: -0.02em;
 }
+
+/* Markdown is scoped to chat bubbles, inheriting each speaker's text color. */
+.agent-workspace .chat-markdown {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.agent-workspace .chat-markdown > * + * {
+  margin-top: 0.85em;
+}
+.agent-workspace .chat-markdown :is(h1, h2, h3, h4, h5, h6) {
+  margin-top: 1.25em;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: -0.02em;
+}
+.agent-workspace .chat-markdown h1 { font-size: 1.3rem; }
+.agent-workspace .chat-markdown h2 { font-size: 1.15rem; }
+.agent-workspace .chat-markdown h3 { font-size: 1rem; }
+.agent-workspace .chat-markdown :is(h4, h5, h6) { font-size: 0.875rem; }
+.agent-workspace .chat-markdown > :first-child { margin-top: 0; }
+.agent-workspace .chat-markdown p { white-space: pre-wrap; }
+.agent-workspace .chat-markdown :is(ul, ol) { padding-left: 1.5em; }
+.agent-workspace .chat-markdown ul { list-style-type: disc; }
+.agent-workspace .chat-markdown ol { list-style-type: decimal; }
+.agent-workspace .chat-markdown li + li { margin-top: 0.3em; }
+.agent-workspace .chat-markdown li > :is(p, ul, ol) + * { margin-top: 0.45em; }
+.agent-workspace .chat-markdown .contains-task-list { list-style: none; padding-left: 0; }
+.agent-workspace .chat-markdown .task-list-item input { margin-right: 0.5em; }
+.agent-workspace .chat-markdown a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
+.agent-workspace .chat-markdown strong { font-weight: 650; }
+.agent-workspace .chat-markdown blockquote {
+  border-left: 3px solid color-mix(in srgb, currentColor 30%, transparent);
+  padding-left: 1em;
+}
+.agent-workspace .chat-markdown blockquote > * + * { margin-top: 0.65em; }
+.agent-workspace .chat-markdown code {
+  border-radius: 0.3rem;
+  padding: 0.15em 0.35em;
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 0.85em;
+}
+.agent-workspace .chat-markdown pre {
+  max-width: 100%;
+  overflow-x: auto;
+  border-radius: 0.65rem;
+  padding: 0.85rem;
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  white-space: pre;
+  overflow-wrap: normal;
+}
+.agent-workspace .chat-markdown pre code { padding: 0; background: transparent; }
+.agent-workspace .chat-markdown hr { border-color: color-mix(in srgb, currentColor 25%, transparent); }
+.agent-workspace .chat-markdown-table { max-width: 100%; overflow-x: auto; }
+.agent-workspace .chat-markdown table { width: 100%; border-collapse: collapse; font-size: 0.85em; }
+.agent-workspace .chat-markdown :is(th, td) {
+  border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+  padding: 0.5em 0.75em;
+  min-width: 6rem;
+}
+.agent-workspace .chat-markdown thead { background: color-mix(in srgb, currentColor 8%, transparent); }
+.agent-workspace .chat-markdown th { font-weight: 600; }
+.agent-workspace .chat-markdown tbody tr:hover { background: transparent; }
 .app-content table th {
   white-space: nowrap;
 }
